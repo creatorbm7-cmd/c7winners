@@ -14,12 +14,58 @@ cd c7winners
 ./scripts/setup.sh   # install dependencies
 ./scripts/check.sh   # run linters and tests
 npm run demo         # play a short session in the terminal
-npm run serve        # build the site and serve it on localhost:8080
+npm run build:web    # build the static front end into dist-web/
+npm run serve:api    # run the server (API + site) on localhost:8080
 ```
 
-The browser front end in `web/` imports the same compiled core the tests cover,
-so a player verifying a roll on the site runs exactly the code under test — there
-is no second implementation to drift. See [DEPLOY.md](DEPLOY.md) to put it online.
+`npm run serve:api` serves the API and the front end from one process, so the
+page is same-origin with its API. See [DEPLOY.md](DEPLOY.md) to put it online.
+
+## Multi-user server
+
+Accounts, balances and game state live server-side in SQLite. The front end
+renders and sends actions; it decides nothing.
+
+| Path | Purpose |
+| --- | --- |
+| `src/server/schema.ts` | Tables. Balances are a SUM over append-only entries, never a column |
+| `src/server/store.ts` | Users, sessions, ledger, gameplay, leaderboard |
+| `src/server/auth.ts` | scrypt password hashing, hashed session tokens |
+| `src/server/api.ts` | JSON HTTP API |
+| `src/server/main.ts` | Server entrypoint: API plus the static site |
+
+### API
+
+| Endpoint | Auth | Does |
+| --- | --- | --- |
+| `POST /api/register` | — | Create an account, returns a bearer token |
+| `POST /api/login` | — | Sign in, returns a bearer token |
+| `POST /api/logout` | token | Invalidate the token |
+| `GET /api/me` | token | Balance, nonce, seed commitment, faucet state |
+| `POST /api/faucet` | token | Claim free chips (429 while on cooldown) |
+| `POST /api/bet` | token | Place a bet: `{stake}` |
+| `GET /api/ledger` | token | Recent entries for this player |
+| `POST /api/fairness/reveal` | token | Reveal the server seed and rotate to a fresh one |
+| `POST /api/fairness/client-seed` | token | Set your own seed |
+| `GET /api/leaderboard` | — | Top players by balance |
+| `GET /api/health` | — | Books reconcile |
+
+Auth is a bearer token, not a cookie, so there is no CSRF surface. Passwords are
+scrypt-hashed with a per-user salt; session tokens are stored hashed, so a leaked
+database does not hand over working credentials.
+
+### Fairness is real here, not illustrative
+
+The server seed is generated server-side and never sent to a client until that
+player reveals it. The commitment published before play is therefore a promise
+the player can check afterwards, rather than a browser hashing a seed it already
+had. Revealing rotates the seed and resets the nonce, because rolls from a public
+seed are predictable.
+
+> [!NOTE]
+> `node:sqlite` is still marked experimental in Node 22, so the server prints an
+> ExperimentalWarning at startup. It is a built-in, which is why the whole server
+> adds no runtime dependencies.
 
 ## The play-money core
 
@@ -31,7 +77,8 @@ is no second implementation to drift. See [DEPLOY.md](DEPLOY.md) to put it onlin
 | `src/game.ts` | Provably fair rolls (commit-reveal) and settlement |
 | `src/guards.ts` | The real-money interlocks |
 | `src/accounts.ts` | Mint, house, and player accounts |
-| `web/` | Static front end; loads the core as ES modules, no bundler |
+| `src/server/` | Multi-user server: accounts, SQLite ledger, HTTP API |
+| `web/` | Static front end; talks to the API, no bundler |
 
 ```ts
 import { PlayCasino } from "c7winners";

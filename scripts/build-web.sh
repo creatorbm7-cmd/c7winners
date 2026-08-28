@@ -1,18 +1,14 @@
 #!/usr/bin/env bash
 # Build the static site into dist-web/.
 #
-# The page loads the compiled core as plain ES modules, so there is no bundler
-# here and nothing to configure: the browser imports the same files the tests
-# run against.
+# The page is HTML and one script: all game logic lives on the server, so there
+# is nothing to bundle and no build step beyond copying.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
 rm -rf dist-web
-npx tsc                       # src/*.ts -> dist/
-mkdir -p dist-web/core
-cp dist/*.js dist-web/core/
-rm -f dist-web/core/*.test.js dist-web/core/demo.js
+mkdir -p dist-web
 cp web/index.html web/app.js dist-web/
 
 printf '==> dist-web/ built (%s files)\n' "$(find dist-web -type f | wc -l)"

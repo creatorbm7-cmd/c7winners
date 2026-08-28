@@ -53,3 +53,8 @@ Thumbs.db
 
 # Built static site
 dist-web/
+
+# SQLite database
+*.db
+*.db-shm
+*.db-wal

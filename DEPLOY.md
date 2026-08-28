@@ -1,8 +1,29 @@
 # Deploying the Chip Room
 
-The site is static: `npm run build:web` produces `dist-web/`, which any static
-host can serve. The page loads the compiled core as plain ES modules, so there is
-no bundler and no server-side runtime.
+There are two things to deploy now: the **server** (accounts, balances, game) and
+the **static front end** it serves. `npm run serve:api` runs both from one
+process, which is the simplest thing that works.
+
+> [!IMPORTANT]
+> The static-only instructions below no longer give you a working site on their
+> own — signing in needs the API. Deploy the server, or deploy the static files
+> and point them at a server you host elsewhere.
+
+## Running the server
+
+```bash
+npm run build:web        # front end -> dist-web/
+npm run serve:api        # API + site on :8080
+```
+
+Environment: `PORT` (default 8080), `DATABASE_PATH` (default `c7winners.db`),
+`WEB_ROOT` (default `dist-web`). The database is a single SQLite file — back it
+up by copying it, and put it on a persistent volume, not a container filesystem
+that resets on deploy.
+
+A host that runs a Node process and gives you a disk (Fly.io, Railway, Render, a
+VPS) fits this directly. Serverless platforms do not: SQLite needs a filesystem
+that persists between requests.
 
 ```bash
 npm run build:web   # -> dist-web/
