@@ -8,7 +8,8 @@ import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { extname, join, normalize } from "node:path";
 import { createApi } from "./api.js";
-import { openDatabase } from "./schema.js";
+import { createDatabase } from "./database.js";
+import { migrate } from "./schema.js";
 import { Store } from "./store.js";
 
 const PORT = Number(process.env["PORT"] ?? 8080);
@@ -36,8 +37,16 @@ const CSP =
   "font-src https://fonts.gstatic.com; script-src 'self'; img-src 'self' data:; " +
   "base-uri 'none'; form-action 'none'; frame-ancestors 'self'";
 
-const store = new Store(openDatabase(DB_PATH));
-const api = createApi(store, { trustedProxies: Number.isInteger(TRUST_PROXY) && TRUST_PROXY > 0 ? TRUST_PROXY : 0 });
+const { db, dialect } = createDatabase({
+  connectionString: process.env["DATABASE_URL"],
+  sqlitePath: DB_PATH,
+});
+await migrate(db, dialect);
+
+const store = new Store(db);
+const api = createApi(store, {
+  trustedProxies: Number.isInteger(TRUST_PROXY) && TRUST_PROXY > 0 ? TRUST_PROXY : 0,
+});
 
 const server = createServer((req, res) => {
   void (async () => {
@@ -63,7 +72,7 @@ const server = createServer((req, res) => {
 
 server.listen(PORT, () => {
   console.log(`c7winners listening on http://localhost:${PORT}`);
-  console.log(`  database: ${DB_PATH}`);
+  console.log(`  database: ${dialect}${dialect === "sqlite" ? ` (${DB_PATH})` : ""}`);
   console.log(`  web root: ${WEB_ROOT}`);
   console.log(`  trusted proxies: ${TRUST_PROXY}${TRUST_PROXY === 0 ? " (X-Forwarded-For ignored)" : ""}`);
 });

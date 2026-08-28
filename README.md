@@ -23,12 +23,21 @@ page is same-origin with its API. See [DEPLOY.md](DEPLOY.md) to put it online.
 
 ## Multi-user server
 
-Accounts, balances and game state live server-side in SQLite. The front end
-renders and sends actions; it decides nothing.
+Accounts, balances and game state live server-side; the front end renders and
+sends actions, and decides nothing.
+
+The store has one implementation over two engines: **SQLite** for tests and
+single-process runs, **Postgres** when `DATABASE_URL` is set. Queries are written
+once with `?` placeholders and the Postgres adapter renumbers them; everything
+else the store needs is spelled the same way on both. The whole store suite runs
+against both engines, so a difference between them fails a test rather than
+production.
 
 | Path | Purpose |
 | --- | --- |
-| `src/server/schema.ts` | Tables. Balances are a SUM over append-only entries, never a column |
+| `src/server/schema.ts` | Tables, in the SQL subset both engines accept |
+| `src/server/db.ts` | The one interface the store talks to |
+| `src/server/db-sqlite.ts` / `db-postgres.ts` | The two adapters |
 | `src/server/store.ts` | Users, sessions, ledger, gameplay, leaderboard |
 | `src/server/auth.ts` | scrypt password hashing, hashed session tokens |
 | `src/server/api.ts` | JSON HTTP API |

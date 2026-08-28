@@ -16,10 +16,15 @@
     "build:web": "./scripts/build-web.sh",
     "serve": "npm run build:web && node scripts/serve.mjs",
     "serve:only": "node scripts/serve.mjs",
-    "serve:api": "tsc && node dist/server/main.js"
+    "serve:api": "tsc && node dist/server/main.js",
+    "build:vercel": "tsc && ./scripts/build-web.sh"
   },
   "devDependencies": {
     "@types/node": "^22.20.1",
+    "@types/pg": "^8.23.1",
     "typescript": "^5.9.2"
+  },
+  "dependencies": {
+    "pg": "^8.23.0"
   }
 }

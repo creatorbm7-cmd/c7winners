@@ -3,7 +3,8 @@ import { createServer, type Server } from "node:http";
 import { after, describe, it } from "node:test";
 import type { AddressInfo } from "node:net";
 import { createApi } from "./api.js";
-import { openDatabase } from "./schema.js";
+import { migrate } from "./schema.js";
+import { SqliteDb } from "./db-sqlite.js";
 import { Store } from "./store.js";
 
 /**
@@ -14,7 +15,11 @@ import { Store } from "./store.js";
  * config tight enough to reach.
  */
 async function serve(options: Record<string, unknown> = {}, apiConfig: Record<string, unknown> = {}) {
-  const store = new Store(openDatabase(":memory:"), { faucetAmount: 1000, ...options });
+  // The API layer is engine-agnostic, so these run on SQLite for speed; the
+  // store tests are what prove both engines agree.
+  const db = new SqliteDb(":memory:");
+  await migrate(db, "sqlite");
+  const store = new Store(db, { faucetAmount: 1000, ...options });
   const api = createApi(store, {
     rateLimits: {
       global: { capacity: 10_000, refillMs: 1000 },
