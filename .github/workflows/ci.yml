@@ -19,7 +19,7 @@ jobs:
     name: Lint & test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Each setup step activates only once the matching manifest exists, so
       # this workflow needs no edits when the project picks a stack.
@@ -31,18 +31,18 @@ jobs:
             if [ -f "$f" ]; then echo "$key=true" >> "$GITHUB_OUTPUT"; fi
           done
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         if: steps.detect.outputs.package_json == 'true'
         with:
           node-version: '22'
           cache: npm
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         if: steps.detect.outputs.pyproject_toml == 'true' || steps.detect.outputs.requirements_txt == 'true'
         with:
           python-version: '3.11'
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         if: steps.detect.outputs.go_mod == 'true'
         with:
           go-version: stable
@@ -60,7 +60,7 @@ jobs:
     name: Shellcheck
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Run shellcheck
         run: |
           sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
