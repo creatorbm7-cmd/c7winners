@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Cancel superseded runs on the same branch/PR.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Lint & test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Each setup step activates only once the matching manifest exists, so
+      # this workflow needs no edits when the project picks a stack.
+      - name: Detect toolchains
+        id: detect
+        run: |
+          for f in package.json pyproject.toml requirements.txt go.mod Cargo.toml; do
+            key=$(echo "$f" | tr '.-' '__')
+            if [ -f "$f" ]; then echo "$key=true" >> "$GITHUB_OUTPUT"; fi
+          done
+
+      - uses: actions/setup-node@v4
+        if: steps.detect.outputs.package_json == 'true'
+        with:
+          node-version: '22'
+          cache: npm
+
+      - uses: actions/setup-python@v5
+        if: steps.detect.outputs.pyproject_toml == 'true' || steps.detect.outputs.requirements_txt == 'true'
+        with:
+          python-version: '3.11'
+
+      - uses: actions/setup-go@v5
+        if: steps.detect.outputs.go_mod == 'true'
+        with:
+          go-version: stable
+
+      - name: Install dependencies
+        run: ./scripts/setup.sh
+
+      - name: Lint
+        run: ./scripts/check.sh lint
+
+      - name: Test
+        run: ./scripts/check.sh test
+
+  shellcheck:
+    name: Shellcheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run shellcheck
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
+          find scripts .claude/hooks -name '*.sh' -type f -print0 \
+            | xargs -0 --no-run-if-empty shellcheck
