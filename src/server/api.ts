@@ -146,7 +146,7 @@ export function createApi(store: Store, config: ApiConfig = {}) {
       send(ctx.res, 401, { error: "Sign in to do that." });
       return null;
     }
-    const user = store.userForToken(ctx.token);
+    const user = await store.userForToken(ctx.token);
     if (!user) {
       send(ctx.res, 401, { error: "Your session has expired. Sign in again." });
       return null;
@@ -157,7 +157,7 @@ export function createApi(store: Store, config: ApiConfig = {}) {
   async function me(user: User) {
     return {
       username: user.username,
-      balance: store.balanceOfUser(user.username),
+      balance: await store.balanceOfUser(user.username),
       nonce: user.nonce,
       clientSeed: user.clientSeed,
       faucetReadyAt: store.faucetReadyAt(user),
@@ -175,7 +175,7 @@ export function createApi(store: Store, config: ApiConfig = {}) {
       const problem = validateCredentials(username, password);
       if (problem) return send(ctx.res, 400, { error: problem });
       try {
-        const { user, token } = store.register(username as string, password as string);
+        const { user, token } = await store.register(username as string, password as string);
         send(ctx.res, 201, { token, ...(await me(user)) });
       } catch (err) {
         if (err instanceof UsernameTakenError) {
@@ -196,7 +196,7 @@ export function createApi(store: Store, config: ApiConfig = {}) {
         return;
       }
       try {
-        const { user, token } = store.login(username, password);
+        const { user, token } = await store.login(username, password);
         // A correct password should not count against the limit: the point is to
         // slow guessing, not to lock out someone who signed in successfully.
         limiter.login.refund(ctx.ip);
@@ -211,7 +211,7 @@ export function createApi(store: Store, config: ApiConfig = {}) {
     },
 
     "POST /api/logout": async (ctx) => {
-      if (ctx.token) store.logout(ctx.token);
+      if (ctx.token) await store.logout(ctx.token);
       send(ctx.res, 200, { ok: true });
     },
 
@@ -225,8 +225,8 @@ export function createApi(store: Store, config: ApiConfig = {}) {
       const user = await requireUser(ctx);
       if (!user) return;
       try {
-        const result = store.claimFaucet(user);
-        send(ctx.res, 200, { ...result, ...(await me(store.refresh(user))) });
+        const result = await store.claimFaucet(user);
+        send(ctx.res, 200, { ...result, ...(await me(await store.refresh(user))) });
       } catch (err) {
         if (err instanceof FaucetCooldownError) {
           return send(ctx.res, 429, {
@@ -247,10 +247,10 @@ export function createApi(store: Store, config: ApiConfig = {}) {
         return send(ctx.res, 400, { error: "Stake must be a whole number of chips, at least 1." });
       }
       if (typeof ctx.body["clientSeed"] === "string" && ctx.body["clientSeed"]) {
-        store.setClientSeed(user, (ctx.body["clientSeed"] as string).slice(0, 64));
+        await store.setClientSeed(user, (ctx.body["clientSeed"] as string).slice(0, 64));
       }
       try {
-        const outcome = await store.bet(store.refresh(user), stake);
+        const outcome = await store.bet(await store.refresh(user), stake);
         send(ctx.res, 200, outcome);
       } catch (err) {
         if (err instanceof InsufficientChipsError) {
@@ -266,7 +266,7 @@ export function createApi(store: Store, config: ApiConfig = {}) {
     "GET /api/ledger": async (ctx) => {
       const user = await requireUser(ctx);
       if (!user) return;
-      send(ctx.res, 200, { entries: store.ledgerFor(user.username) });
+      send(ctx.res, 200, { entries: await store.ledgerFor(user.username) });
     },
 
     "POST /api/fairness/client-seed": async (ctx) => {
@@ -276,8 +276,8 @@ export function createApi(store: Store, config: ApiConfig = {}) {
       if (typeof seed !== "string" || !seed.trim()) {
         return send(ctx.res, 400, { error: "Provide a seed." });
       }
-      store.setClientSeed(user, seed.trim().slice(0, 64));
-      send(ctx.res, 200, await me(store.refresh(user)));
+      await store.setClientSeed(user, seed.trim().slice(0, 64));
+      send(ctx.res, 200, await me(await store.refresh(user)));
     },
 
     "POST /api/fairness/reveal": async (ctx) => {
@@ -287,12 +287,12 @@ export function createApi(store: Store, config: ApiConfig = {}) {
     },
 
     "GET /api/leaderboard": async (ctx) => {
-      send(ctx.res, 200, { players: store.leaderboard() });
+      send(ctx.res, 200, { players: await store.leaderboard() });
     },
 
     "GET /api/health": async (ctx) => {
       try {
-        store.assertHealthy();
+        await store.assertHealthy();
         send(ctx.res, 200, { ok: true });
       } catch (err) {
         send(ctx.res, 500, { ok: false, error: (err as Error).message });

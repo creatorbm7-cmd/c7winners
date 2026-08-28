@@ -4,10 +4,35 @@ There are two things to deploy now: the **server** (accounts, balances, game) an
 the **static front end** it serves. `npm run serve:api` runs both from one
 process, which is the simplest thing that works.
 
-> [!IMPORTANT]
-> The static-only instructions below no longer give you a working site on their
-> own — signing in needs the API. Deploy the server, or deploy the static files
-> and point them at a server you host elsewhere.
+The server runs on either engine: **Postgres** when `DATABASE_URL` is set, and
+SQLite otherwise. Which one you need depends on the host.
+
+| Host | Engine | Why |
+| --- | --- | --- |
+| Vercel and other serverless | Postgres | The filesystem resets between requests, so SQLite would lose every account |
+| Fly, Railway, Render, a VPS | Either | A persistent disk means SQLite works, and needs no second service |
+
+## Vercel + Supabase
+
+`vercel.json` and `api/index.mjs` are already set up: the API runs as one
+function and the static site is served alongside it.
+
+```bash
+npx vercel --prod
+npx vercel domains add c7winners.com
+```
+
+Then set **`DATABASE_URL`** in the Vercel project (Settings → Environment
+Variables) and redeploy. Until it is set, the site loads but every API call
+answers 503 with a message saying exactly that.
+
+Take the connection string from Supabase → Project Settings → Database →
+Connection string → **Transaction pooler** (port 6543). The pooler is the right
+one for serverless: each invocation opens its own connection, and the direct
+port will run out of them under any real traffic.
+
+`TRUST_PROXY` defaults to 1 in the Vercel function, which is correct behind
+Vercel's edge. Leave it alone unless you add another proxy in front.
 
 ## Running the server
 
