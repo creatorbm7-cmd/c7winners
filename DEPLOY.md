@@ -17,7 +17,13 @@ npm run serve:api        # API + site on :8080
 ```
 
 Environment: `PORT` (default 8080), `DATABASE_PATH` (default `c7winners.db`),
-`WEB_ROOT` (default `dist-web`). The database is a single SQLite file — back it
+`WEB_ROOT` (default `dist-web`), `TRUST_PROXY` (default `0`).
+
+**Set `TRUST_PROXY` when you deploy behind a load balancer** — one hop is
+`TRUST_PROXY=1`. Left at 0 behind a proxy, every request looks like it comes from
+the proxy, so one visitor's traffic can exhaust the shared limit for everyone.
+Set too high, or set at all with nothing in front, and a client can spoof
+`X-Forwarded-For` to bypass the limits entirely. Match the real number of hops. The database is a single SQLite file — back it
 up by copying it, and put it on a persistent volume, not a container filesystem
 that resets on deploy.
 

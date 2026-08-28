@@ -2,6 +2,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { CAPABILITIES } from "../guards.js";
 import { InsufficientChipsError } from "../types.js";
 import { validateCredentials } from "./auth.js";
+import { RateLimiter, clientAddress, type BucketConfig } from "./ratelimit.js";
 import {
   AuthenticationError,
   FaucetCooldownError,
@@ -18,6 +19,51 @@ interface Ctx {
   readonly res: ServerResponse;
   readonly body: Record<string, unknown>;
   readonly token: string | null;
+  /** The caller's address, as far as it can be trusted. */
+  readonly ip: string;
+}
+
+export interface RateLimitConfig {
+  /** Applies to every request, so no single caller can flood the server. */
+  readonly global?: BucketConfig;
+  /** Account creation, per address. */
+  readonly register?: BucketConfig;
+  /** Sign-in attempts, per address. */
+  readonly login?: BucketConfig;
+  /** Sign-in attempts against one username, from anywhere. */
+  readonly loginPerUser?: BucketConfig;
+  /** Bets, per signed-in player. */
+  readonly bet?: BucketConfig;
+}
+
+/**
+ * Defaults sized so a real player never meets them.
+ *
+ * The sign-in limits are the load-bearing ones: they are what stops a password
+ * from being guessed at machine speed. `loginPerUser` exists because limiting by
+ * address alone leaves one account open to a slow attempt from each of many
+ * addresses.
+ */
+export const DEFAULT_RATE_LIMITS: Required<RateLimitConfig> = {
+  global: { capacity: 300, refillMs: 60_000 },
+  register: { capacity: 5, refillMs: 60 * 60_000 },
+  login: { capacity: 10, refillMs: 15 * 60_000 },
+  loginPerUser: { capacity: 5, refillMs: 15 * 60_000 },
+  bet: { capacity: 120, refillMs: 60_000 },
+};
+
+export interface ApiConfig {
+  readonly rateLimits?: RateLimitConfig;
+  /**
+   * How many proxies in front of this server are yours.
+   *
+   * Left at 0, `X-Forwarded-For` is ignored entirely — the safe default, since a
+   * client can put anything in that header and would otherwise get a fresh
+   * rate-limit identity on every request. Set it to the real number of hops only
+   * when this server sits behind proxies you control.
+   */
+  readonly trustedProxies?: number;
+  readonly clock?: () => number;
 }
 
 function send(res: ServerResponse, status: number, payload: unknown): void {
@@ -64,18 +110,37 @@ function chipsFrom(value: unknown): number | null {
   return value;
 }
 
-export interface ApiOptions {
-  /** Where a player's session token is required. */
-  readonly store: Store;
-}
-
 /**
  * The play-money HTTP API.
  *
  * Every response is JSON. Authentication is a bearer token from `/api/login` or
  * `/api/register`; there are no cookies, so nothing here is exposed to CSRF.
  */
-export function createApi(store: Store) {
+export function createApi(store: Store, config: ApiConfig = {}) {
+  const limits = { ...DEFAULT_RATE_LIMITS, ...config.rateLimits };
+  const trustedProxies = config.trustedProxies ?? 0;
+  const clock = config.clock ?? Date.now;
+  const limiter = {
+    global: new RateLimiter(limits.global, clock),
+    register: new RateLimiter(limits.register, clock),
+    login: new RateLimiter(limits.login, clock),
+    loginPerUser: new RateLimiter(limits.loginPerUser, clock),
+    bet: new RateLimiter(limits.bet, clock),
+  };
+
+  /** Refuses with 429 and a Retry-After, or returns true to continue. */
+  function withinLimit(res: ServerResponse, rl: RateLimiter, key: string, what: string): boolean {
+    const decision = rl.take(key);
+    if (decision.allowed) return true;
+    const seconds = Math.ceil(decision.retryAfterMs / 1000);
+    res.setHeader("retry-after", String(seconds));
+    send(res, 429, {
+      error: `Too many ${what}. Try again in ${seconds} second${seconds === 1 ? "" : "s"}.`,
+      retryAfterMs: decision.retryAfterMs,
+    });
+    return false;
+  }
+
   async function requireUser(ctx: Ctx): Promise<User | null> {
     if (!ctx.token) {
       send(ctx.res, 401, { error: "Sign in to do that." });
@@ -105,6 +170,7 @@ export function createApi(store: Store) {
 
   const routes: Record<string, (ctx: Ctx) => Promise<void>> = {
     "POST /api/register": async (ctx) => {
+      if (!withinLimit(ctx.res, limiter.register, ctx.ip, "new accounts from here")) return;
       const { username, password } = ctx.body;
       const problem = validateCredentials(username, password);
       if (problem) return send(ctx.res, 400, { error: problem });
@@ -124,8 +190,17 @@ export function createApi(store: Store) {
       if (typeof username !== "string" || typeof password !== "string") {
         return send(ctx.res, 400, { error: "Username and password are required." });
       }
+      if (!withinLimit(ctx.res, limiter.login, ctx.ip, "sign-in attempts")) return;
+      const userKey = username.toLowerCase();
+      if (!withinLimit(ctx.res, limiter.loginPerUser, userKey, "sign-in attempts for that account")) {
+        return;
+      }
       try {
         const { user, token } = store.login(username, password);
+        // A correct password should not count against the limit: the point is to
+        // slow guessing, not to lock out someone who signed in successfully.
+        limiter.login.refund(ctx.ip);
+        limiter.loginPerUser.refund(userKey);
         send(ctx.res, 200, { token, ...(await me(user)) });
       } catch (err) {
         if (err instanceof AuthenticationError) {
@@ -166,6 +241,7 @@ export function createApi(store: Store) {
     "POST /api/bet": async (ctx) => {
       const user = await requireUser(ctx);
       if (!user) return;
+      if (!withinLimit(ctx.res, limiter.bet, user.username, "bets")) return;
       const stake = chipsFrom(ctx.body["stake"]);
       if (stake === null) {
         return send(ctx.res, 400, { error: "Stake must be a whole number of chips, at least 1." });
@@ -228,6 +304,9 @@ export function createApi(store: Store) {
     const path = (req.url ?? "/").split("?")[0] ?? "/";
     if (!path.startsWith("/api/")) return false;
 
+    const ip = clientAddress(req.headers["x-forwarded-for"], req.socket.remoteAddress, trustedProxies);
+    if (!withinLimit(res, limiter.global, ip, "requests")) return true;
+
     const route = routes[`${req.method ?? "GET"} ${path}`];
     if (!route) {
       send(res, 404, { error: "No such endpoint." });
@@ -245,7 +324,7 @@ export function createApi(store: Store) {
     }
 
     try {
-      await route({ req, res, body, token: bearer(req) });
+      await route({ req, res, body, token: bearer(req), ip });
     } catch (err) {
       // Report that something broke without handing the client internals.
       console.error(`${req.method} ${path} failed:`, err);

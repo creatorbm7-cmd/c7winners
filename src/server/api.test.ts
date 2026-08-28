@@ -6,10 +6,25 @@ import { createApi } from "./api.js";
 import { openDatabase } from "./schema.js";
 import { Store } from "./store.js";
 
-/** Spins up the API on an ephemeral port and returns a client bound to it. */
-async function serve(options: Record<string, unknown> = {}) {
+/**
+ * Spins up the API on an ephemeral port and returns a client bound to it.
+ *
+ * Rate limits are wide open by default so these tests measure behaviour rather
+ * than tripping over a limit; the limits themselves are exercised below with a
+ * config tight enough to reach.
+ */
+async function serve(options: Record<string, unknown> = {}, apiConfig: Record<string, unknown> = {}) {
   const store = new Store(openDatabase(":memory:"), { faucetAmount: 1000, ...options });
-  const api = createApi(store);
+  const api = createApi(store, {
+    rateLimits: {
+      global: { capacity: 10_000, refillMs: 1000 },
+      register: { capacity: 10_000, refillMs: 1000 },
+      login: { capacity: 10_000, refillMs: 1000 },
+      loginPerUser: { capacity: 10_000, refillMs: 1000 },
+      bet: { capacity: 10_000, refillMs: 1000 },
+    },
+    ...apiConfig,
+  });
   const server: Server = createServer((req, res) => {
     void (async () => {
       if (!(await api(req, res))) {
@@ -33,7 +48,8 @@ async function serve(options: Record<string, unknown> = {}) {
     return { status: res.status, json: text ? JSON.parse(text) : null };
   };
 
-  return { store, call, close: () => new Promise<void>((r) => server.close(() => r())) };
+  const origin = `http://127.0.0.1:${port}`;
+  return { store, call, origin, close: () => new Promise<void>((r) => server.close(() => r())) };
 }
 
 describe("API", () => {
@@ -198,5 +214,97 @@ describe("API", () => {
     assert.equal((await s.call("GET", "/api/nope")).status, 404);
     const big = { username: "a".repeat(9000), password: "correct-horse" };
     assert.equal((await s.call("POST", "/api/register", big)).status, 400);
+  });
+});
+
+describe("rate limiting", () => {
+  const creds = { username: "alice", password: "correct-horse" };
+
+  it("caps account creation from one address", async () => {
+    const s = await serve({}, { rateLimits: { register: { capacity: 2, refillMs: 60_000 } } });
+    after(s.close);
+    assert.equal((await s.call("POST", "/api/register", { username: "one", password: "correct-horse" })).status, 201);
+    assert.equal((await s.call("POST", "/api/register", { username: "two", password: "correct-horse" })).status, 201);
+    const third = await s.call("POST", "/api/register", { username: "three", password: "correct-horse" });
+    assert.equal(third.status, 429);
+    assert.ok(third.json.retryAfterMs > 0);
+  });
+
+  it("caps sign-in attempts and says how long to wait", async () => {
+    const s = await serve({}, { rateLimits: { login: { capacity: 3, refillMs: 60_000 } } });
+    after(s.close);
+    await s.call("POST", "/api/register", creds);
+    for (let i = 0; i < 3; i++) {
+      assert.equal((await s.call("POST", "/api/login", { ...creds, password: "wrong" })).status, 401);
+    }
+    const blocked = await s.call("POST", "/api/login", { ...creds, password: "wrong" });
+    assert.equal(blocked.status, 429);
+    assert.match(blocked.json.error, /Try again in \d+ seconds?/);
+  });
+
+  it("does not spend the limit on a correct password", async () => {
+    const s = await serve({}, { rateLimits: { login: { capacity: 3, refillMs: 60_000 } } });
+    after(s.close);
+    await s.call("POST", "/api/register", creds);
+    // More successful sign-ins than the bucket holds: refunds keep it open.
+    for (let i = 0; i < 6; i++) {
+      assert.equal((await s.call("POST", "/api/login", creds)).status, 200, `sign-in ${i + 1} was blocked`);
+    }
+  });
+
+  it("caps attempts against one account even from a fresh address each time", async () => {
+    // trustedProxies:1 makes X-Forwarded-For decide the per-address key, so each
+    // request looks like a different client — the per-username limit is what is
+    // left to stop it.
+    const s = await serve({}, {
+      trustedProxies: 1,
+      rateLimits: {
+        login: { capacity: 10_000, refillMs: 1000 },
+        loginPerUser: { capacity: 3, refillMs: 60_000 },
+      },
+    });
+    after(s.close);
+    await s.call("POST", "/api/register", creds);
+
+    const attempt = (n: number) =>
+      fetch(`${s.origin}/api/login`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-forwarded-for": `203.0.113.${n}` },
+        body: JSON.stringify({ ...creds, password: "wrong" }),
+      });
+
+    for (let i = 1; i <= 3; i++) assert.equal((await attempt(i)).status, 401);
+    assert.equal((await attempt(4)).status, 429, "a per-address rotation walked past the limit");
+  });
+
+  it("caps bets per player", async () => {
+    const s = await serve({}, { rateLimits: { bet: { capacity: 2, refillMs: 60_000 } } });
+    after(s.close);
+    const { json: reg } = await s.call("POST", "/api/register", creds);
+    await s.call("POST", "/api/faucet", {}, reg.token);
+    assert.equal((await s.call("POST", "/api/bet", { stake: 1 }, reg.token)).status, 200);
+    assert.equal((await s.call("POST", "/api/bet", { stake: 1 }, reg.token)).status, 200);
+    assert.equal((await s.call("POST", "/api/bet", { stake: 1 }, reg.token)).status, 429);
+  });
+
+  it("makes a correct password wait once the bucket is empty", async () => {
+    // Deliberate: if the right password skipped the limit, an attacker's eventual
+    // correct guess would go straight through and the limit would protect nothing.
+    const s = await serve({}, { rateLimits: { loginPerUser: { capacity: 2, refillMs: 60_000 } } });
+    after(s.close);
+    await s.call("POST", "/api/register", creds);
+    for (let i = 0; i < 2; i++) {
+      assert.equal((await s.call("POST", "/api/login", { ...creds, password: "wrong" })).status, 401);
+    }
+    assert.equal((await s.call("POST", "/api/login", creds)).status, 429);
+  });
+
+  it("sends a Retry-After header when it refuses", async () => {
+    const s = await serve({}, { rateLimits: { global: { capacity: 1, refillMs: 60_000 } } });
+    after(s.close);
+    await s.call("GET", "/api/health");
+    const res = await fetch(`${s.origin}/api/health`);
+    assert.equal(res.status, 429);
+    assert.ok(Number(res.headers.get("retry-after")) > 0, "no Retry-After header");
   });
 });
