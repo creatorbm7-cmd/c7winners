@@ -111,6 +111,29 @@ export class Ledger {
   }
 
   /**
+   * Rebuilds the ledger from a stored entry log, recomputing every balance.
+   *
+   * This is the seam persistence hangs off: only the entries are ever stored,
+   * and balances come back by replaying them, so a restore cannot resurrect a
+   * balance that its own history does not support.
+   */
+  replay(entries: readonly Entry[]): void {
+    this.#entries.length = 0;
+    this.#balances.clear();
+    for (const e of entries) {
+      // Entries arrive from storage, so they get the same scrutiny post() applies
+      // rather than being trusted because they were written by an earlier run.
+      assertChips(e.amount);
+      if (typeof e.from !== "string" || typeof e.to !== "string" || e.from === e.to) {
+        throw new LedgerCorruptError(`entry ${e.seq} moves chips from ${e.from} to ${e.to}`);
+      }
+      this.#entries.push(e);
+      this.#balances.set(e.from, this.balanceOf(e.from) - e.amount);
+      this.#balances.set(e.to, this.balanceOf(e.to) + e.amount);
+    }
+  }
+
+  /**
    * Recomputes every balance from the entry log and checks the books sum to zero.
    *
    * Call this in tests and health checks. Unlike a stored solvency flag, this

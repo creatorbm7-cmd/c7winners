@@ -13,8 +13,13 @@ git clone https://github.com/creatorbm7-cmd/c7winners.git
 cd c7winners
 ./scripts/setup.sh   # install dependencies
 ./scripts/check.sh   # run linters and tests
-npm run demo         # play a short session
+npm run demo         # play a short session in the terminal
+npm run serve        # build the site and serve it on localhost:8080
 ```
+
+The browser front end in `web/` imports the same compiled core the tests cover,
+so a player verifying a roll on the site runs exactly the code under test — there
+is no second implementation to drift. See [DEPLOY.md](DEPLOY.md) to put it online.
 
 ## The play-money core
 
@@ -26,6 +31,7 @@ npm run demo         # play a short session
 | `src/game.ts` | Provably fair rolls (commit-reveal) and settlement |
 | `src/guards.ts` | The real-money interlocks |
 | `src/accounts.ts` | Mint, house, and player accounts |
+| `web/` | Static front end; loads the core as ES modules, no bundler |
 
 ```ts
 import { PlayCasino } from "c7winners";
@@ -52,6 +58,15 @@ Three things keep real money out, and none of them is a config flag:
 
 Because no real money is involved, none of this needs a gaming licence or a
 payment processor to run.
+
+### Persistence
+
+`casino.snapshot()` captures the entry log, nonces, faucet cooldowns and server
+seed; `casino.restore(snap)` puts them back. Only entries are stored — balances
+are recomputed by replaying them, so a snapshot cannot smuggle in chips its own
+history does not account for. Restore validates into a throwaway ledger first and
+adopts it only if it passes, so a rejected snapshot leaves the casino untouched
+rather than half-applied.
 
 ### Why double-entry
 

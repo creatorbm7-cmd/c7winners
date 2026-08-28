@@ -12,7 +12,10 @@
     "build": "tsc",
     "lint": "tsc --noEmit",
     "test": "tsc && node --test dist/**/*.test.js",
-    "demo": "tsc && node dist/demo.js"
+    "demo": "tsc && node dist/demo.js",
+    "build:web": "./scripts/build-web.sh",
+    "serve": "npm run build:web && node scripts/serve.mjs",
+    "serve:only": "node scripts/serve.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.20.1",

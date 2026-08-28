@@ -13,7 +13,7 @@ console.log("mode:        ", casino.capabilities.mode);
 console.log("currency:    ", casino.capabilities.currency, "(no cash value)");
 console.log("deposits:    ", casino.capabilities.deposits);
 console.log("withdrawals: ", casino.capabilities.withdrawals);
-console.log("seed commitment:", casino.seedCommitment);
+console.log("seed commitment:", await casino.seedCommitment());
 console.log();
 
 const claim = casino.claimFaucet("alice");
@@ -21,7 +21,7 @@ console.log(`alice claimed ${claim.granted} chips -> balance ${claim.balance}`);
 console.log();
 
 for (let i = 0; i < 8; i++) {
-  const result = casino.bet("alice", 100, "alice-seed");
+  const result = await casino.bet("alice", 100, "alice-seed");
   const verdict = result.won ? `won  +${result.net}` : `lost ${result.net}`;
   console.log(
     `bet ${String(i + 1).padStart(2)}  roll ${result.roll.toFixed(6)}  ${verdict.padEnd(10)}  balance ${result.balance}`,
@@ -38,4 +38,4 @@ console.log("books reconcile:      yes");
 
 const seed = casino.revealServerSeed();
 console.log("seed revealed:       ", seed.slice(0, 16) + "...");
-console.log("commitment verifies: ", verifyCommitment(seed, casino.seedCommitment));
+console.log("commitment verifies: ", await verifyCommitment(seed, await casino.seedCommitment()));

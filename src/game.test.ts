@@ -11,27 +11,27 @@ import {
 } from "./game.js";
 
 describe("provably fair rolls", () => {
-  it("produces the same roll for the same inputs", () => {
+  it("produces the same roll for the same inputs", async () => {
     const seed = "a".repeat(64);
-    assert.equal(roll(seed, "client", 0), roll(seed, "client", 0));
-    assert.notEqual(roll(seed, "client", 0), roll(seed, "client", 1));
-    assert.notEqual(roll(seed, "client", 0), roll(seed, "other", 0));
+    assert.equal(await roll(seed, "client", 0), await roll(seed, "client", 0));
+    assert.notEqual(await roll(seed, "client", 0), await roll(seed, "client", 1));
+    assert.notEqual(await roll(seed, "client", 0), await roll(seed, "other", 0));
   });
 
-  it("stays within [0, 1)", () => {
+  it("stays within [0, 1)", async () => {
     const seed = generateServerSeed();
     for (let n = 0; n < 500; n++) {
-      const value = roll(seed, "client", n);
+      const value = await roll(seed, "client", n);
       assert.ok(value >= 0 && value < 1, `roll ${n} was ${value}`);
     }
   });
 
-  it("is roughly uniform", () => {
+  it("is roughly uniform", async () => {
     const seed = generateServerSeed();
     const buckets = new Array(10).fill(0) as number[];
     const trials = 20_000;
     for (let n = 0; n < trials; n++) {
-      buckets[Math.floor(roll(seed, "c", n) * 10)]! += 1;
+      buckets[Math.floor((await roll(seed, "c", n)) * 10)]! += 1;
     }
     const expected = trials / 10;
     for (const [i, count] of buckets.entries()) {
@@ -42,20 +42,20 @@ describe("provably fair rolls", () => {
     }
   });
 
-  it("rejects a nonce that is not a non-negative integer", () => {
+  it("rejects a nonce that is not a non-negative integer", async () => {
     const seed = generateServerSeed();
     for (const bad of [-1, 1.5, Number.NaN]) {
-      assert.throws(() => roll(seed, "c", bad), /Nonce/);
+      await assert.rejects(() => roll(seed, "c", bad), /Nonce/);
     }
   });
 
-  it("verifies a revealed seed against its commitment", () => {
+  it("verifies a revealed seed against its commitment", async () => {
     const seed = generateServerSeed();
-    const published = commitment(seed);
-    assert.ok(verifyCommitment(seed, published));
-    assert.ok(!verifyCommitment(generateServerSeed(), published));
-    assert.ok(!verifyCommitment(seed, "deadbeef"));
-    assert.ok(!verifyCommitment(seed, "not hex at all"));
+    const published = await commitment(seed);
+    assert.ok(await verifyCommitment(seed, published));
+    assert.ok(!(await verifyCommitment(generateServerSeed(), published)));
+    assert.ok(!(await verifyCommitment(seed, "deadbeef")));
+    assert.ok(!(await verifyCommitment(seed, "not hex at all")));
   });
 });
 
@@ -76,14 +76,14 @@ describe("settlement", () => {
     assert.equal(payout, 5); // floor(3 * 1.96)
   });
 
-  it("gives the house its stated edge over many rounds", () => {
+  it("gives the house its stated edge over many rounds", async () => {
     const seed = generateServerSeed();
     const stake = 1000;
     let staked = 0;
     let returned = 0;
     for (let n = 0; n < 40_000; n++) {
       staked += stake;
-      returned += settle(roll(seed, "c", n), stake, COIN_FLIP).payout;
+      returned += settle(await roll(seed, "c", n), stake, COIN_FLIP).payout;
     }
     const edge = (staked - returned) / staked;
     assert.ok(
