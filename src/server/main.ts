@@ -14,6 +14,15 @@ import { Store } from "./store.js";
 const PORT = Number(process.env["PORT"] ?? 8080);
 const DB_PATH = process.env["DATABASE_PATH"] ?? "c7winners.db";
 const WEB_ROOT = process.env["WEB_ROOT"] ?? "dist-web";
+/**
+ * How many proxies in front of this server are yours.
+ *
+ * 0 (the default) ignores `X-Forwarded-For` entirely. Set this only to the real
+ * number of hops you control: trusting the header when nothing is in front means
+ * any client can send a different address per request and slip every rate limit.
+ * Behind one load balancer, TRUST_PROXY=1.
+ */
+const TRUST_PROXY = Number(process.env["TRUST_PROXY"] ?? 0);
 
 const TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -28,7 +37,7 @@ const CSP =
   "base-uri 'none'; form-action 'none'; frame-ancestors 'self'";
 
 const store = new Store(openDatabase(DB_PATH));
-const api = createApi(store);
+const api = createApi(store, { trustedProxies: Number.isInteger(TRUST_PROXY) && TRUST_PROXY > 0 ? TRUST_PROXY : 0 });
 
 const server = createServer((req, res) => {
   void (async () => {
@@ -56,6 +65,7 @@ server.listen(PORT, () => {
   console.log(`c7winners listening on http://localhost:${PORT}`);
   console.log(`  database: ${DB_PATH}`);
   console.log(`  web root: ${WEB_ROOT}`);
+  console.log(`  trusted proxies: ${TRUST_PROXY}${TRUST_PROXY === 0 ? " (X-Forwarded-For ignored)" : ""}`);
 });
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {

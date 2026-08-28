@@ -54,6 +54,37 @@ Auth is a bearer token, not a cookie, so there is no CSRF surface. Passwords are
 scrypt-hashed with a per-user salt; session tokens are stored hashed, so a leaked
 database does not hand over working credentials.
 
+### Rate limits
+
+Token buckets, so a short burst is fine but the sustained rate is capped. A
+refusal is `429` with `Retry-After`.
+
+| Limit | Default | Keyed on |
+| --- | --- | --- |
+| Any request | 300 / minute | address |
+| Register | 5 / hour | address |
+| Sign in | 10 / 15 min | address |
+| Sign in | 5 / 15 min | username |
+| Bet | 120 / minute | player |
+
+`loginPerUser` is the one that matters most: limiting by address alone leaves a
+single account open to a slow attempt from each of many addresses.
+
+A successful sign-in refunds its token, so ordinary use — signing in on a few
+devices, or after a session expires — never drains the bucket. Once the bucket
+*is* empty, though, even a correct password has to wait out the window. That is
+deliberate: if the right password skipped the limit, an attacker's eventual
+correct guess would sail straight through, and the limit would protect nothing.
+The cost is that five bad attempts locks the account for fifteen minutes,
+whoever is typing.
+
+> [!IMPORTANT]
+> `TRUST_PROXY` defaults to `0`, which ignores `X-Forwarded-For` entirely. Anyone
+> can put anything in that header, so trusting it with nothing in front lets a
+> client mint a fresh rate-limit identity per request and walk through every
+> limit above. Set it to the real number of proxies you control — behind one load
+> balancer, `TRUST_PROXY=1`.
+
 ### Fairness is real here, not illustrative
 
 The server seed is generated server-side and never sent to a client until that
