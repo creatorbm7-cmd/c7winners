@@ -1,0 +1,21 @@
+{
+  "name": "c7winners",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Play-money game platform core. Handles play chips only; real money is structurally unsupported.",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc",
+    "lint": "tsc --noEmit",
+    "test": "tsc && node --test dist/**/*.test.js",
+    "demo": "tsc && node dist/demo.js"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.1",
+    "typescript": "^5.9.2"
+  }
+}
