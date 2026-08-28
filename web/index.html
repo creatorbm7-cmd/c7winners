@@ -72,7 +72,7 @@ button:disabled{cursor:not-allowed;opacity:.45}
 .chip[aria-pressed="true"]{background:linear-gradient(90deg,var(--gold-d),var(--gold));color:#120a02;border-color:transparent}
 .field{display:flex;align-items:center;gap:10px;margin-bottom:12px}
 .field label{font-size:11px;font-weight:700;letter-spacing:.8px;color:var(--mut);text-transform:uppercase;flex:0 0 auto}
-input[type=text],input[type=number]{
+input[type=text],input[type=number],input[type=password]{
   font-family:var(--mono);font-size:13px;flex:1;min-width:0;padding:10px 12px;border-radius:10px;
   background:rgba(4,10,7,.75);border:1px solid var(--line);color:var(--ink)}
 input:focus{outline:2px solid var(--hair);outline-offset:-1px;border-color:transparent}
@@ -141,6 +141,20 @@ td.amt{font-family:var(--mono);text-align:right}
 
 <div class="wrap">
 
+
+  <div class="card" id="authCard" style="display:none">
+    <div class="lbl" style="font-size:11px;font-weight:700;letter-spacing:1.1px;color:var(--mut);text-transform:uppercase">Sign in to play</div>
+    <div class="field" style="margin-top:12px"><label for="username">User</label><input type="text" id="username" autocomplete="username" spellcheck="false" maxlength="24"></div>
+    <div class="field"><label for="password">Pass</label><input type="password" id="password" autocomplete="current-password" minlength="8"></div>
+    <div class="rowbtn">
+      <button class="btn" id="login">Sign in</button>
+      <button class="btn ghost" id="registerBtn">Create account</button>
+    </div>
+    <div class="verify" id="authMsg"></div>
+    <p class="note">Play chips only — nothing here has cash value, and there is nothing to pay.</p>
+  </div>
+
+  <div id="playArea" style="display:none">
   <!-- balance + faucet -->
   <div class="card hero">
     <div>
@@ -196,10 +210,13 @@ td.amt{font-family:var(--mono);text-align:right}
     <p class="note">
       Each roll is <span class="mono">HMAC-SHA256(server seed, your seed : nonce)</span>. The commitment is published
       before you bet, so a revealed seed that still hashes to it proves the rolls were fixed in advance.
-      <b style="color:var(--amb)">In this demo the server seed lives in your browser</b> — it shows the mechanism, but only a
-      real server can make it a guarantee.
+      The server seed is held server-side and never sent to you until you reveal it, so the commitment
+      is a real promise: the outcome of every roll was fixed before you placed the bet.
+      Revealing rotates the seed, because a public seed makes future rolls predictable.
     </p>
   </div>
+
+
 
   <div class="sec">Ledger</div>
   <div class="tablewrap">
@@ -210,7 +227,16 @@ td.amt{font-family:var(--mono);text-align:right}
   </div>
   <p class="note" id="reconcile">Every movement is double-entry, so the books always sum to zero.</p>
 
-  <div class="rowbtn"><button class="btn ghost" id="reset">Reset my chips</button></div>
+  <div class="rowbtn"><button class="btn ghost" id="logout">Sign out</button></div>
+  </div>
+
+  <div class="sec">Leaderboard</div>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>#</th><th>Player</th><th style="text-align:right">Rounds</th><th style="text-align:right">Chips</th></tr></thead>
+      <tbody id="board"><tr><td colspan="4" class="empty">No players yet.</td></tr></tbody>
+    </table>
+  </div>
 
   <div class="foot">
     <b>Play money only.</b> These chips are issued free, have no cash value, and cannot be bought, sold, or cashed out.<br>
