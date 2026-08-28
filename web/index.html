@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="C7 Chip Room — a play-money game floor. Free chips, no cash value, no deposits or withdrawals.">
+<meta name="robots" content="index,follow">
+<meta name="color-scheme" content="dark">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%AA%99%3C/text%3E%3C/svg%3E">
+<title>C7 Chip Room</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#04080a;--panel:#0b1a12;--panel-2:#081410;--ink:#eafff4;--mut:#8fbfa6;
+  --line:rgba(240,201,74,.18);--hair:rgba(240,201,74,.32);
+  --gold:#f0c94a;--gold-l:#fff4cf;--gold-d:#c68a2e;
+  --grn:#2ee08a;--red:#ff6b7d;--amb:#f0b84a;
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+body{
+  font-family:Inter,system-ui,sans-serif;color:var(--ink);
+  background:radial-gradient(120% 60% at 50% -10%,#0b2417,#050d09 55%,#04080a);
+  background-color:var(--bg);min-height:100vh;padding-bottom:56px;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:880px;margin:0 auto;padding:0 14px}
+.num{font-variant-numeric:tabular-nums}
+.mono{font-family:var(--mono)}
+
+/* top bar */
+.top{position:sticky;top:0;z-index:30;display:flex;align-items:center;justify-content:space-between;gap:10px;
+  padding:13px 16px;background:linear-gradient(180deg,rgba(9,26,17,.97),rgba(7,18,12,.82));
+  backdrop-filter:blur(12px);border-bottom:1px solid var(--line);margin-bottom:18px}
+.top h1{font-size:16px;font-weight:900;letter-spacing:-.2px}
+.top h1 b{background:linear-gradient(90deg,var(--gold-d),var(--gold) 50%,var(--gold-l));
+  -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.badge{font-size:9.5px;font-weight:900;letter-spacing:1.1px;color:#120a02;
+  background:linear-gradient(90deg,var(--gold),var(--gold-l));padding:5px 9px;border-radius:999px;white-space:nowrap}
+
+/* cards */
+.card{border-radius:16px;border:1px solid var(--line);background:linear-gradient(160deg,var(--panel),var(--panel-2));padding:18px}
+.sec{font-size:11px;font-weight:900;letter-spacing:1.3px;color:var(--gold);text-transform:uppercase;margin:24px 4px 10px}
+.grid{display:grid;gap:12px}
+
+/* balance hero */
+.hero{display:flex;align-items:center;justify-content:space-between;gap:18px;flex-wrap:wrap}
+.hero .lbl{font-size:11px;font-weight:700;letter-spacing:1.1px;color:var(--mut);text-transform:uppercase}
+.hero .bal{font-size:46px;font-weight:900;line-height:1.05;letter-spacing:-1.5px;margin-top:4px;
+  background:linear-gradient(90deg,var(--gold-l),var(--gold));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.hero .sub{font-size:11.5px;color:var(--mut);margin-top:5px}
+
+/* buttons */
+button{font-family:inherit;cursor:pointer;border:0}
+button:focus-visible{outline:2px solid var(--gold-l);outline-offset:2px}
+button:disabled{cursor:not-allowed;opacity:.45}
+.btn{font-size:13.5px;font-weight:800;padding:12px 22px;border-radius:12px;
+  background:linear-gradient(90deg,var(--gold-d),var(--gold));color:#120a02;transition:filter .15s,transform .08s}
+.btn:hover:not(:disabled){filter:brightness(1.09)}
+.btn:active:not(:disabled){transform:translateY(1px)}
+.btn.ghost{background:rgba(240,201,74,.09);color:var(--gold);border:1px solid var(--hair)}
+.btn.ghost:hover:not(:disabled){background:rgba(240,201,74,.16)}
+.btn.big{font-size:15px;padding:15px 28px;width:100%}
+
+/* bet panel */
+.stakes{display:flex;gap:7px;flex-wrap:wrap;margin:12px 0}
+.chip{font-size:12px;font-weight:800;padding:8px 14px;border-radius:999px;
+  background:rgba(8,20,14,.7);border:1px solid var(--line);color:var(--mut);transition:.15s}
+.chip:hover:not(:disabled){border-color:var(--hair);color:var(--gold-l)}
+.chip[aria-pressed="true"]{background:linear-gradient(90deg,var(--gold-d),var(--gold));color:#120a02;border-color:transparent}
+.field{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.field label{font-size:11px;font-weight:700;letter-spacing:.8px;color:var(--mut);text-transform:uppercase;flex:0 0 auto}
+input[type=text],input[type=number]{
+  font-family:var(--mono);font-size:13px;flex:1;min-width:0;padding:10px 12px;border-radius:10px;
+  background:rgba(4,10,7,.75);border:1px solid var(--line);color:var(--ink)}
+input:focus{outline:2px solid var(--hair);outline-offset:-1px;border-color:transparent}
+
+/* result */
+.result{margin-top:14px;padding:15px;border-radius:13px;border:1px solid var(--line);
+  background:rgba(4,10,7,.55);display:none}
+.result.show{display:block}
+.result.win{border-color:rgba(46,224,138,.45);background:rgba(46,224,138,.07)}
+.result.lose{border-color:rgba(255,107,125,.35);background:rgba(255,107,125,.06)}
+.result .verdict{font-size:19px;font-weight:900;letter-spacing:-.3px}
+.result.win .verdict{color:var(--grn)}
+.result.lose .verdict{color:var(--red)}
+.result .detail{font-size:11.5px;color:var(--mut);margin-top:6px}
+@media(prefers-reduced-motion:no-preference){
+  .result.show{animation:pop .22s ease-out}
+  @keyframes pop{from{opacity:0;transform:translateY(-5px)}to{opacity:1;transform:none}}
+}
+
+/* stats */
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.stat{padding:13px;border-radius:12px;background:rgba(8,18,12,.6);border:1px solid var(--line)}
+.stat .k{font-size:10px;font-weight:700;letter-spacing:.9px;color:var(--mut);text-transform:uppercase}
+.stat .v{font-size:20px;font-weight:800;margin-top:5px;letter-spacing:-.4px}
+.stat .v.up{color:var(--grn)}.stat .v.down{color:var(--red)}
+
+/* fair */
+.kv{display:grid;grid-template-columns:auto 1fr;gap:8px 14px;align-items:baseline;font-size:12px}
+.kv dt{color:var(--mut);white-space:nowrap}
+.kv dd{font-family:var(--mono);font-size:11px;word-break:break-all;color:var(--ink)}
+.verify{margin-top:13px;padding:11px 13px;border-radius:11px;font-size:12px;display:none}
+.verify.show{display:block}
+.verify.ok{background:rgba(46,224,138,.1);border:1px solid rgba(46,224,138,.4);color:#b6ffd9}
+.verify.bad{background:rgba(255,107,125,.1);border:1px solid rgba(255,107,125,.4);color:#ffd7dd}
+
+/* ledger */
+.tablewrap{overflow-x:auto;border-radius:12px;border:1px solid var(--line)}
+table{border-collapse:collapse;width:100%;font-size:12px;min-width:460px}
+th{text-align:left;font-size:10px;font-weight:800;letter-spacing:.9px;text-transform:uppercase;color:var(--mut);
+  padding:10px 13px;background:rgba(4,10,7,.6);border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:9px 13px;border-bottom:1px solid rgba(240,201,74,.07);white-space:nowrap}
+tr:last-child td{border-bottom:0}
+td.amt{font-family:var(--mono);text-align:right}
+.tag{font-size:10px;font-weight:800;letter-spacing:.5px;padding:3px 8px;border-radius:999px;text-transform:uppercase}
+.tag.faucet{background:rgba(240,201,74,.15);color:var(--gold)}
+.tag.bet{background:rgba(255,107,125,.13);color:var(--red)}
+.tag.payout{background:rgba(46,224,138,.14);color:var(--grn)}
+.empty{padding:26px 14px;text-align:center;color:var(--mut);font-size:12px}
+
+.note{font-size:11px;color:var(--mut);line-height:1.65;margin-top:9px}
+.foot{margin-top:26px;font-size:11px;color:var(--mut);text-align:center;line-height:1.7}
+.foot b{color:var(--gold)}
+.rowbtn{display:flex;gap:9px;flex-wrap:wrap;margin-top:13px}
+@media(max-width:640px){
+  .stats{grid-template-columns:repeat(2,1fr)}
+  .hero .bal{font-size:38px}
+  .top h1{font-size:14px}
+}
+</style>
+</head>
+<body>
+<div class="top">
+  <h1>C7 <b>Chip Room</b></h1>
+  <span class="badge">🪙 PLAY MONEY</span>
+</div>
+
+<div class="wrap">
+
+  <!-- balance + faucet -->
+  <div class="card hero">
+    <div>
+      <div class="lbl">Your chips</div>
+      <div class="bal num" id="balance">0</div>
+      <div class="sub" id="circ">No chips issued yet</div>
+    </div>
+    <div>
+      <button class="btn" id="faucet">Claim 1,000 chips</button>
+      <div class="note" id="faucetNote" style="text-align:right">Free chips, no payment</div>
+    </div>
+  </div>
+
+  <div class="sec">Place a bet</div>
+  <div class="card">
+    <div class="field">
+      <label for="stake">Stake</label>
+      <input type="number" id="stake" min="1" step="1" value="100" inputmode="numeric">
+    </div>
+    <div class="stakes" id="quick"></div>
+    <button class="btn big" id="bet">Flip — 1.96× on a win</button>
+    <div class="result" id="result">
+      <div class="verdict" id="verdict"></div>
+      <div class="detail" id="detail"></div>
+    </div>
+    <p class="note">Even odds with a 2% house edge, so a winning flip returns 1.96× your stake. Payouts are floored to whole chips.</p>
+  </div>
+
+  <div class="sec">This session</div>
+  <div class="stats">
+    <div class="stat"><div class="k">Rounds</div><div class="v num" id="sRounds">0</div></div>
+    <div class="stat"><div class="k">Wagered</div><div class="v num" id="sWagered">0</div></div>
+    <div class="stat"><div class="k">Net</div><div class="v num" id="sNet">0</div></div>
+    <div class="stat"><div class="k">Return</div><div class="v num" id="sRtp">—</div></div>
+  </div>
+
+  <div class="sec">Provably fair</div>
+  <div class="card">
+    <dl class="kv">
+      <dt>Seed commitment</dt><dd id="commit">—</dd>
+      <dt>Server seed</dt><dd id="seed">hidden until you reveal</dd>
+      <dt>Next nonce</dt><dd id="nonce" class="num">0</dd>
+    </dl>
+    <div class="field" style="margin-top:14px">
+      <label for="clientSeed">Your seed</label>
+      <input type="text" id="clientSeed" maxlength="64" spellcheck="false">
+    </div>
+    <div class="rowbtn">
+      <button class="btn ghost" id="reveal">Reveal &amp; verify seed</button>
+      <button class="btn ghost" id="newSeed">New seed</button>
+    </div>
+    <div class="verify" id="verifyBox"></div>
+    <p class="note">
+      Each roll is <span class="mono">HMAC-SHA256(server seed, your seed : nonce)</span>. The commitment is published
+      before you bet, so a revealed seed that still hashes to it proves the rolls were fixed in advance.
+      <b style="color:var(--amb)">In this demo the server seed lives in your browser</b> — it shows the mechanism, but only a
+      real server can make it a guarantee.
+    </p>
+  </div>
+
+  <div class="sec">Ledger</div>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>#</th><th>Movement</th><th>Reason</th><th style="text-align:right">Chips</th><th style="text-align:right">Balance</th></tr></thead>
+      <tbody id="ledger"><tr><td colspan="5" class="empty">Claim your chips to start the ledger.</td></tr></tbody>
+    </table>
+  </div>
+  <p class="note" id="reconcile">Every movement is double-entry, so the books always sum to zero.</p>
+
+  <div class="rowbtn"><button class="btn ghost" id="reset">Reset my chips</button></div>
+
+  <div class="foot">
+    <b>Play money only.</b> These chips are issued free, have no cash value, and cannot be bought, sold, or cashed out.<br>
+    No deposits, no withdrawals, no real-money engine — so no gaming licence or payment processor is involved.
+  </div>
+</div>
+<script type="module" src="./app.js"></script>
+</body>
+</html>

@@ -1,4 +1,4 @@
-import { HOUSE, MINT, playerAccount } from "./accounts.js";
+import { HOUSE, MINT, isPlayerAccount, playerAccount } from "./accounts.js";
 import { Faucet, type ClaimResult } from "./faucet.js";
 import { CAPABILITIES } from "./guards.js";
 import { Ledger } from "./ledger.js";
@@ -11,6 +11,7 @@ import {
   type GameRules,
   type RoundOutcome,
 } from "./game.js";
+import type { Entry } from "./ledger.js";
 import { assertChips, InsufficientChipsError, type Chips } from "./types.js";
 
 export interface CasinoOptions {
@@ -22,6 +23,20 @@ export interface CasinoOptions {
   readonly clock?: () => number;
   /** Server seed for provably fair rolls. Generated if not supplied. */
   readonly serverSeed?: string;
+}
+
+/**
+ * Everything needed to rebuild a casino exactly as it was.
+ *
+ * Only the ledger entries are stored, never balances — those are recomputed on
+ * restore, so a snapshot cannot smuggle in chips its own history does not
+ * account for.
+ */
+export interface CasinoSnapshot {
+  readonly entries: readonly Entry[];
+  readonly nonces: Record<string, number>;
+  readonly lastClaims: Record<string, number>;
+  readonly serverSeed: string;
 }
 
 export interface BetResult extends RoundOutcome {
@@ -45,11 +60,13 @@ export class PlayCasino {
   readonly #ledger: Ledger;
   readonly #faucet: Faucet;
   readonly #rules: GameRules;
-  readonly #serverSeed: string;
+  #serverSeed: string;
   readonly #nonces = new Map<string, number>();
+  readonly #clock: () => number;
 
   constructor(options: CasinoOptions = {}) {
     const clock = options.clock ?? Date.now;
+    this.#clock = clock;
     this.#ledger = new Ledger(clock);
     this.#rules = options.rules ?? COIN_FLIP;
     this.#serverSeed = options.serverSeed ?? generateServerSeed();
@@ -66,7 +83,7 @@ export class PlayCasino {
   }
 
   /** The public commitment to this session's server seed. Publish before play. */
-  get seedCommitment(): string {
+  async seedCommitment(): Promise<string> {
     return commitment(this.#serverSeed);
   }
 
@@ -90,6 +107,28 @@ export class PlayCasino {
     return this.#faucet.claim(userId);
   }
 
+  /** When this player may next claim from the faucet, or 0 if they may claim now. */
+  faucetReadyAt(userId: string): number {
+    return this.#faucet.nextClaimAt(userId);
+  }
+
+  /** The nonce the player's next bet will use. */
+  nextNonce(userId: string): number {
+    return this.#nonces.get(userId) ?? 0;
+  }
+
+  /**
+   * Starts a fresh seed, resetting every nonce.
+   *
+   * Call this after revealing: once a seed is public, rolls made with it are
+   * predictable, so continuing on it would end the fairness guarantee.
+   */
+  rotateServerSeed(): string {
+    this.#serverSeed = generateServerSeed();
+    this.#nonces.clear();
+    return this.#serverSeed;
+  }
+
   /** The house's net position: positive means the house is up. */
   houseBalance(): Chips {
     return this.#ledger.balanceOf(HOUSE);
@@ -107,7 +146,7 @@ export class PlayCasino {
    * order. Both legs go through the ledger, so a bet can never create or destroy
    * chips — it only moves them.
    */
-  bet(userId: string, stake: Chips, clientSeed: string): BetResult {
+  async bet(userId: string, stake: Chips, clientSeed: string): Promise<BetResult> {
     assertChips(stake);
     const account = playerAccount(userId);
     const balance = this.#ledger.balanceOf(account);
@@ -119,7 +158,8 @@ export class PlayCasino {
     this.#nonces.set(userId, nonce + 1);
 
     this.#ledger.post(account, HOUSE, stake, "bet");
-    const outcome = settle(roll(this.#serverSeed, clientSeed, nonce), stake, this.#rules);
+    const rolled = await roll(this.#serverSeed, clientSeed, nonce);
+    const outcome = settle(rolled, stake, this.#rules);
     if (outcome.payout > 0) {
       // The house may go negative; its balance is simply its running P&L.
       this.#ledger.post(HOUSE, account, outcome.payout, "payout", true);
@@ -132,6 +172,49 @@ export class PlayCasino {
       balance: this.#ledger.balanceOf(account),
       net: outcome.payout - stake,
     };
+  }
+
+  /** Captures the full state, for storing between sessions or processes. */
+  snapshot(): CasinoSnapshot {
+    return {
+      entries: this.#ledger.entries.slice(),
+      nonces: Object.fromEntries(this.#nonces),
+      lastClaims: this.#faucet.snapshot(),
+      serverSeed: this.#serverSeed,
+    };
+  }
+
+  /**
+   * Restores a previously captured state, replacing everything in this casino.
+   *
+   * Throws if the restored books do not reconcile, so corrupt storage fails loudly
+   * at load rather than quietly handing someone chips.
+   */
+  restore(snap: CasinoSnapshot): void {
+    // Validate against a throwaway ledger first. Replaying into the live one and
+    // checking afterwards would leave a rejected snapshot half-applied — the
+    // caller catches the error and carries on with poisoned books.
+    const staged = new Ledger(this.#clock);
+    staged.replay(snap.entries);
+    staged.assertBalanced();
+    // Double-entry books always sum to zero, so that alone proves nothing about a
+    // restore. The claim worth checking is that no player holds chips their own
+    // history never gave them: only the mint and the house may run negative.
+    for (const [account, balance] of staged.balances()) {
+      if (isPlayerAccount(account) && balance < 0) {
+        throw new Error(`Refusing to restore: ${account} would hold ${balance} chips`);
+      }
+    }
+
+    this.#ledger.replay(snap.entries);
+    this.#nonces.clear();
+    for (const [user, n] of Object.entries(snap.nonces ?? {})) {
+      if (Number.isSafeInteger(n) && n >= 0) this.#nonces.set(user, n);
+    }
+    this.#faucet.restore(snap.lastClaims ?? {});
+    if (typeof snap.serverSeed === "string" && snap.serverSeed) {
+      this.#serverSeed = snap.serverSeed;
+    }
   }
 
   /** Recomputes the books and throws if anything fails to reconcile. */

@@ -45,6 +45,19 @@ export class Faucet {
     this.#clock = options.clock ?? Date.now;
   }
 
+  /** Last claim time per player, for persisting faucet state. */
+  snapshot(): Record<string, number> {
+    return Object.fromEntries(this.#lastClaim);
+  }
+
+  /** Restores previously persisted claim times. */
+  restore(claims: Record<string, number>): void {
+    this.#lastClaim.clear();
+    for (const [user, at] of Object.entries(claims)) {
+      if (Number.isSafeInteger(at)) this.#lastClaim.set(user, at);
+    }
+  }
+
   /** When this player may next claim, or 0 if they may claim now. */
   nextClaimAt(userId: string): number {
     const last = this.#lastClaim.get(userId);

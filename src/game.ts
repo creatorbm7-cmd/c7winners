@@ -1,5 +1,3 @@
-import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
-
 /**
  * Provably fair rolls, using the standard commit-reveal scheme.
  *
@@ -10,29 +8,43 @@ import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypt
  *
  * The server cannot change the seed after the fact without breaking the hash, and
  * cannot steer an individual roll without knowing the player's seed in advance.
+ *
+ * Built on Web Crypto rather than `node:crypto` so the same module runs unchanged
+ * in Node and in the browser — the front end verifies rolls with this exact code,
+ * not a re-implementation that could drift from it.
  */
 
+const subtle = globalThis.crypto.subtle;
+const encoder = new TextEncoder();
+
+function toHex(bytes: Uint8Array): string {
+  let out = "";
+  for (const b of bytes) out += b.toString(16).padStart(2, "0");
+  return out;
+}
+
 /** A fresh server seed. Keep secret until the session is over, then reveal it. */
-export function generateServerSeed(): string {
-  return randomBytes(32).toString("hex");
+export function generateServerSeed(bytes = 32): string {
+  return toHex(globalThis.crypto.getRandomValues(new Uint8Array(bytes)));
 }
 
 /** The public commitment to a server seed, published before any bets are placed. */
-export function commitment(serverSeed: string): string {
-  return createHash("sha256").update(serverSeed).digest("hex");
+export async function commitment(serverSeed: string): Promise<string> {
+  const digest = await subtle.digest("SHA-256", encoder.encode(serverSeed));
+  return toHex(new Uint8Array(digest));
 }
 
 /** Checks a revealed seed against the commitment published earlier. */
-export function verifyCommitment(serverSeed: string, published: string): boolean {
-  const actual = Buffer.from(commitment(serverSeed), "hex");
-  let expected: Buffer;
-  try {
-    expected = Buffer.from(published, "hex");
-  } catch {
-    return false;
+export async function verifyCommitment(serverSeed: string, published: string): Promise<boolean> {
+  const actual = await commitment(serverSeed);
+  if (actual.length !== published.length) return false;
+  // Compare every character regardless of where the first difference is. The
+  // commitment is public, so this is belt-and-braces rather than load-bearing.
+  let diff = 0;
+  for (let i = 0; i < actual.length; i++) {
+    diff |= actual.charCodeAt(i) ^ published.charCodeAt(i);
   }
-  if (actual.length !== expected.length) return false;
-  return timingSafeEqual(actual, expected);
+  return diff === 0;
 }
 
 /**
@@ -41,15 +53,28 @@ export function verifyCommitment(serverSeed: string, published: string): boolean
  * Deterministic: the same three inputs always produce the same roll, which is
  * exactly what lets a player verify the outcome afterwards.
  */
-export function roll(serverSeed: string, clientSeed: string, nonce: number): number {
+export async function roll(
+  serverSeed: string,
+  clientSeed: string,
+  nonce: number,
+): Promise<number> {
   if (!Number.isSafeInteger(nonce) || nonce < 0) {
     throw new Error(`Nonce must be a non-negative integer, got: ${nonce}`);
   }
-  const digest = createHmac("sha256", serverSeed)
-    .update(`${clientSeed}:${nonce}`)
-    .digest();
+  const key = await subtle.importKey(
+    "raw",
+    encoder.encode(serverSeed),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const sig = new Uint8Array(
+    await subtle.sign("HMAC", key, encoder.encode(`${clientSeed}:${nonce}`)),
+  );
   // 48 bits, which a double holds exactly, giving a uniform [0, 1).
-  return digest.readUIntBE(0, 6) / 2 ** 48;
+  let value = 0;
+  for (let i = 0; i < 6; i++) value = value * 256 + sig[i]!;
+  return value / 2 ** 48;
 }
 
 export interface GameRules {
