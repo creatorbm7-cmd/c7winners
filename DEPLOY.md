@@ -84,9 +84,31 @@ separate databases, the failure `fly.toml`'s header warns about.
 
 ## Railway
 
-`railway.json` builds the same Dockerfile. Add a volume mounted at `/data` in
-the service settings, then set `DATABASE_PATH=/data/c7winners.db`. Without the
-volume every deploy starts with no accounts.
+`railway.json` builds the same Dockerfile. Connect the repository in the Railway
+dashboard and every push to `main` deploys itself — no token, no CLI, nothing to
+install. That makes this the one host here that can be set up entirely from a
+phone.
+
+Three things have to be set on the service, and `railway.json` can carry none of
+them:
+
+| Setting | Value | Why |
+| --- | --- | --- |
+| Volume, mounted at | `/data` | Without it every deploy starts with no accounts |
+| `DATABASE_PATH` | `/data/c7winners.db` | Puts the database on that volume |
+| `TRUST_PROXY` | `1` | Railway terminates TLS one hop in front |
+
+`TRUST_PROXY` earns its row. It defaults to 0, which is correct only with
+nothing in front; left at 0 behind Railway's proxy, every request looks like it
+came from the proxy, so one visitor's traffic can exhaust the rate limit for
+everyone. The Dockerfile sets `PORT=8080`, and the server reads whatever `PORT`
+the platform provides, so that one needs no attention.
+
+> [!WARNING]
+> Keep this service at **one replica**, for the reason `fly.toml`'s header gives:
+> each replica gets its own volume, so a second would be a second, separate
+> database, and whether an account exists would depend on which replica answered.
+> To run more than one, set `DATABASE_URL` to a Postgres instance instead.
 
 ## Vercel + Supabase
 
