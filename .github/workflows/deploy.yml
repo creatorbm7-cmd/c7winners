@@ -1,0 +1,87 @@
+name: Deploy
+
+# Deploys the play-money chip room to Fly (app `c7winners-play`, served at
+# play.c7winners.com). Everything about *what* is deployed lives in fly.toml and
+# the Dockerfile; this workflow only decides *when*.
+#
+# Requires one repository secret:
+#
+#   FLY_API_TOKEN   fly tokens create deploy -a c7winners-play
+#
+# A deploy-scoped token is enough and cannot touch anything else in the Fly
+# organisation. It does not create the app or its volume — do that once by hand,
+# per DEPLOY.md.
+on:
+  # Deploy only once CI has gone green on main. Triggering on `push` instead
+  # would race the test run, and a commit that breaks the suite would ship
+  # anyway.
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  # For redeploying the current main without a new commit — after changing a Fly
+  # secret, say, or to recover from a rolled-back release.
+  workflow_dispatch:
+
+# One deploy at a time, and never cancel one in flight: a half-applied release
+# is worse than a queued one.
+concurrency:
+  group: deploy-c7winners-play
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Fly.io
+    runs-on: ubuntu-latest
+    # workflow_run fires for failed and cancelled CI runs too, so the conclusion
+    # has to be checked here rather than in the trigger.
+    if: >-
+      github.event_name == 'workflow_dispatch'
+      || github.event.workflow_run.conclusion == 'success'
+    environment:
+      name: production
+      url: https://play.c7winners.com
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # A workflow_run event checks out the default branch's tip by default,
+          # which is not necessarily the commit CI just passed on. Deploy the
+          # commit that was actually tested.
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      # Fly's own installer, rather than a third-party action: this step holds
+      # the deploy token, and fly.io is already trusted with it.
+      - name: Install flyctl
+        run: |
+          curl -fsSL https://fly.io/install.sh | sh
+          echo "$HOME/.fly/bin" >> "$GITHUB_PATH"
+
+      # --remote-only builds the image on Fly's builder, so the runner needs no
+      # Docker cache and the image never crosses the public internet twice.
+      # flyctl waits for the machine's health check and rolls back on failure,
+      # so a red deploy fails this job.
+      - name: Deploy
+        run: flyctl deploy --remote-only
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+      # The health check above runs inside Fly's network. This one goes through
+      # the public edge, which also covers the proxy and TLS termination. It
+      # uses the fly.dev hostname on purpose: play.c7winners.com depends on DNS
+      # and a certificate that are not this workflow's to fix.
+      - name: Smoke test
+        run: |
+          for attempt in 1 2 3 4 5; do
+            if curl -fsS --max-time 10 https://c7winners-play.fly.dev/api/health \
+              | tee /dev/stderr | grep -q '"ok":true'; then
+              echo "healthy"
+              exit 0
+            fi
+            echo "attempt $attempt failed, retrying in 10s"
+            sleep 10
+          done
+          echo "::error::/api/health did not report ok after the deploy"
+          exit 1

@@ -49,6 +49,30 @@ Back up by copying the database off the volume:
 fly ssh console -C "cat /data/c7winners.db" > backup.db
 ```
 
+### Deploying from GitHub
+
+`.github/workflows/deploy.yml` runs the same `fly deploy` on every push to
+`main`, once CI has gone green on that commit. Set one repository secret and it
+takes over:
+
+```bash
+fly tokens create deploy -a c7winners-play
+```
+
+Paste the token into **Settings → Secrets and variables → Actions → New
+repository secret**, named `FLY_API_TOKEN`. A deploy-scoped token can push
+releases to this one app and nothing else in the organisation.
+
+The workflow deploys the exact commit CI tested, not whatever `main` points at
+by the time it starts, and it never runs two deploys at once. After the release
+it asks `https://c7winners-play.fly.dev/api/health` through Fly's public edge —
+the hostname is deliberate, since `play.c7winners.com` depends on DNS and a
+certificate that a workflow cannot fix. **Run → Deploy → Run workflow**
+redeploys the current `main` without a new commit.
+
+It deploys; it does not create. The app and the volume are the `fly launch` and
+`fly volumes create` above, done once by hand.
+
 ## Railway
 
 `railway.json` builds the same Dockerfile. Add a volume mounted at `/data` in
