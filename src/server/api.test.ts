@@ -213,6 +213,33 @@ describe("API", () => {
     assert.equal(res.json.ok, true);
   });
 
+  it("serves the platform status without a token", async () => {
+    const s = await serve();
+    after(s.close);
+    const { json: reg } = await s.call("POST", "/api/register", { username: "alice", password: "correct-horse" });
+    await s.call("POST", "/api/faucet", undefined, reg.token);
+
+    const res = await s.call("GET", "/api/status");
+    assert.equal(res.status, 200);
+    assert.equal(res.json.capabilities.deposits, false);
+    assert.equal(res.json.capabilities.withdrawals, false);
+    assert.equal(res.json.capabilities.realMoneyEngine, false);
+    assert.equal(res.json.players, 1);
+    assert.equal(res.json.chipsInCirculation, res.json.playerChips + res.json.housePosition);
+    assert.equal(res.json.booksReconcile, true);
+    assert.equal(res.json.negativeAccounts, 0);
+  });
+
+  it("keeps usernames out of the status payload", async () => {
+    // The panel is public, so it reports the house in aggregate and nothing that
+    // identifies who is playing.
+    const s = await serve();
+    after(s.close);
+    await s.call("POST", "/api/register", { username: "alice", password: "correct-horse" });
+    const res = await s.call("GET", "/api/status");
+    assert.equal(JSON.stringify(res.json).includes("alice"), false);
+  });
+
   it("404s an unknown endpoint and rejects an oversized body", async () => {
     const s = await serve();
     after(s.close);

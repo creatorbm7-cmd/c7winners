@@ -47,7 +47,7 @@ async function fixture(engine: TestEngine, overrides: Record<string, unknown> = 
     clock: () => now,
     ...overrides,
   });
-  return { store, advance: (ms: number) => (now += ms) };
+  return { store, db, advance: (ms: number) => (now += ms) };
 }
 
 for (const engine of ENGINES) {
@@ -275,6 +275,82 @@ for (const engine of ENGINES) {
       assert.equal(board[0]?.username, "newcomer");
       assert.equal(board[0]?.balance, 0);
       assert.equal(board[0]?.rounds, 0);
+    });
+  });
+
+  describe(`status (${engine.name})`, () => {
+    it("reports an empty house", async () => {
+      const f = await fixture(engine);
+      const s = await f.store.status();
+      assert.deepEqual(s, {
+        chipsInCirculation: 0,
+        housePosition: 0,
+        playerChips: 0,
+        ledgerEntries: 0,
+        players: 0,
+        booksReconcile: true,
+        negativeAccounts: 0,
+      });
+    });
+
+    it("counts chips the faucet issued as in circulation and held by players", async () => {
+      const f = await fixture(engine);
+      const alice = (await f.store.register("alice", PASSWORD)).user;
+      await f.store.claimFaucet(alice);
+
+      const s = await f.store.status();
+      assert.equal(s.chipsInCirculation, 1000);
+      assert.equal(s.playerChips, 1000);
+      assert.equal(s.housePosition, 0);
+      assert.equal(s.ledgerEntries, 1);
+      assert.equal(s.players, 1);
+      assert.equal(s.booksReconcile, true);
+    });
+
+    it("moves a lost stake to the house without changing circulation", async () => {
+      // The faucet mints; a bet only moves chips that already exist, so the
+      // house and the player must together still hold every issued chip.
+      const f = await fixture(engine);
+      const alice = (await f.store.register("alice", PASSWORD)).user;
+      await f.store.claimFaucet(alice);
+      await f.store.bet(await f.store.refresh(alice), 100);
+
+      const s = await f.store.status();
+      assert.equal(s.chipsInCirculation, 1000);
+      assert.equal(s.playerChips + s.housePosition, 1000);
+      assert.equal(s.booksReconcile, true);
+      assert.equal(s.negativeAccounts, 0);
+    });
+
+    it("reports books that do not reconcile when a chip leaves the known accounts", async () => {
+      // The one failure the check exists for: a chip that went somewhere the
+      // mint, the house and the players do not account for. It cannot happen
+      // through the store's own methods, so the entry is written directly.
+      const f = await fixture(engine);
+      const alice = (await f.store.register("alice", PASSWORD)).user;
+      await f.store.claimFaucet(alice);
+      await f.db.run(
+        `INSERT INTO entries (at, from_account, to_account, amount, reason) VALUES (?,?,?,?,?)`,
+        [1, "player:alice", "system:elsewhere", 250, "leak"],
+      );
+
+      const s = await f.store.status();
+      assert.equal(s.chipsInCirculation, 1000);
+      assert.equal(s.playerChips + s.housePosition, 750);
+      assert.equal(s.booksReconcile, false);
+    });
+
+    it("counts a player account driven below zero", async () => {
+      const f = await fixture(engine);
+      await f.store.register("alice", PASSWORD);
+      await f.db.run(
+        `INSERT INTO entries (at, from_account, to_account, amount, reason) VALUES (?,?,?,?,?)`,
+        [1, "player:alice", "system:house", 5, "impossible"],
+      );
+
+      const s = await f.store.status();
+      assert.equal(s.negativeAccounts, 1);
+      await assert.rejects(() => f.store.assertHealthy());
     });
   });
 }
