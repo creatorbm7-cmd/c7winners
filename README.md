@@ -19,7 +19,8 @@ npm run serve:api    # run the server (API + site) on localhost:8080
 ```
 
 `npm run serve:api` serves the API and the front end from one process, so the
-page is same-origin with its API. See [DEPLOY.md](DEPLOY.md) to put it online.
+page is same-origin with its API. See [DEPLOY.md](DEPLOY.md) to put it online,
+and [API.md](API.md) for every endpoint a front end can call.
 
 ## Multi-user server
 
