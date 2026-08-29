@@ -5,6 +5,7 @@
  * CORS surface and no third-party origin to allow in the CSP.
  */
 import { createServer } from "node:http";
+import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { extname, join, normalize } from "node:path";
 import { createApi } from "./api.js";
@@ -37,15 +38,22 @@ const CSP =
   "font-src https://fonts.gstatic.com; script-src 'self'; img-src 'self' data:; " +
   "base-uri 'none'; form-action 'none'; frame-ancestors 'self'";
 
+// Checked before the database is opened, because opening it creates the file:
+// after that there is no way to tell a first boot from a wiped one.
+const sqliteFileExisted = existsSync(DB_PATH);
+
 const { db, dialect } = createDatabase({
   connectionString: process.env["DATABASE_URL"],
   sqlitePath: DB_PATH,
 });
 await migrate(db, dialect);
 
+const createdThisBoot = dialect === "sqlite" && !sqliteFileExisted;
+
 const store = new Store(db);
 const api = createApi(store, {
   trustedProxies: Number.isInteger(TRUST_PROXY) && TRUST_PROXY > 0 ? TRUST_PROXY : 0,
+  storage: { engine: dialect, createdThisBoot },
 });
 
 const server = createServer((req, res) => {
@@ -75,6 +83,20 @@ server.listen(PORT, () => {
   console.log(`  database: ${dialect}${dialect === "sqlite" ? ` (${DB_PATH})` : ""}`);
   console.log(`  web root: ${WEB_ROOT}`);
   console.log(`  trusted proxies: ${TRUST_PROXY}${TRUST_PROXY === 0 ? " (X-Forwarded-For ignored)" : ""}`);
+
+  // Loud on purpose. A wiped database is otherwise indistinguishable from a
+  // healthy empty one: the process starts, /api/health passes, and the only
+  // evidence is that every account is gone. Saying so at boot puts the fact in
+  // the deploy log, where it is read at exactly the moment it can be acted on.
+  if (createdThisBoot) {
+    console.warn(
+      `  WARNING: no database existed at ${DB_PATH}; a new one was created.\n` +
+        `  Expected on a first deploy. On any later one it means the file is not\n` +
+        `  on a persistent volume, and every account just went with the old\n` +
+        `  container. Mount a volume and point DATABASE_PATH inside it, or set\n` +
+        `  DATABASE_URL to a Postgres instance. See DEPLOY.md.`,
+    );
+  }
 });
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {

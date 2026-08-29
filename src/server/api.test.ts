@@ -230,6 +230,23 @@ describe("API", () => {
     assert.equal(res.json.negativeAccounts, 0);
   });
 
+  it("reports storage facts when the deployment supplies them", async () => {
+    const s = await serve({}, { storage: { engine: "sqlite", createdThisBoot: true } });
+    after(s.close);
+    const res = await s.call("GET", "/api/status");
+    assert.deepEqual(res.json.storage, { engine: "sqlite", createdThisBoot: true });
+  });
+
+  it("omits storage entirely when the deployment says nothing", async () => {
+    // Better absent than guessed: the API cannot tell whether its own file is on
+    // a volume, so a server that was not told stays silent and the panel shows
+    // no row rather than a reassuring one.
+    const s = await serve();
+    after(s.close);
+    const res = await s.call("GET", "/api/status");
+    assert.equal("storage" in res.json, false);
+  });
+
   it("keeps usernames out of the status payload", async () => {
     // The panel is public, so it reports the house in aggregate and nothing that
     // identifies who is playing.

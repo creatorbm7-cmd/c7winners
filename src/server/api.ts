@@ -64,6 +64,27 @@ export interface ApiConfig {
    */
   readonly trustedProxies?: number;
   readonly clock?: () => number;
+  /**
+   * Whether accounts written now will still be here after the next deploy.
+   *
+   * SQLite on a container filesystem loses everything on redeploy, and loses it
+   * quietly: the server starts, the health check passes, and the only sign is
+   * that the players are gone. So the deployment tells the API what it knows,
+   * and /api/status says it out loud.
+   */
+  readonly storage?: StorageFacts;
+}
+
+export interface StorageFacts {
+  readonly engine: "sqlite" | "postgres";
+  /**
+   * SQLite only: no database file existed when this process started.
+   *
+   * True on a genuinely first deploy, and true again after every deploy when the
+   * file is not on a volume — which is the case worth catching, since the two
+   * look identical from outside until the second one happens twice.
+   */
+  readonly createdThisBoot: boolean;
 }
 
 function send(res: ServerResponse, status: number, payload: unknown): void {
@@ -120,6 +141,7 @@ export function createApi(store: Store, config: ApiConfig = {}) {
   const limits = { ...DEFAULT_RATE_LIMITS, ...config.rateLimits };
   const trustedProxies = config.trustedProxies ?? 0;
   const clock = config.clock ?? Date.now;
+  const storage = config.storage;
   const limiter = {
     global: new RateLimiter(limits.global, clock),
     register: new RateLimiter(limits.register, clock),
@@ -301,6 +323,7 @@ export function createApi(store: Store, config: ApiConfig = {}) {
       send(ctx.res, 200, {
         capabilities: CAPABILITIES,
         rules: store.rules,
+        ...(storage === undefined ? {} : { storage }),
         ...(await store.status()),
       });
     },
