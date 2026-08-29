@@ -18,11 +18,20 @@ A persistent disk means SQLite works, so there is no second service to run and
 no secret to set.
 
 ```bash
-fly launch --no-deploy --name c7winners
+fly launch --no-deploy --name c7winners-play
 fly volumes create c7winners_data --size 1 --region sin
 fly deploy
-fly certs add c7winners.com
+fly certs add play.c7winners.com
 ```
+
+A subdomain is the easy case for DNS: one CNAME, no IP records.
+
+| Record | Name | Value |
+| --- | --- | --- |
+| CNAME | `play` | `c7winners-play.fly.dev` |
+
+`fly certs show play.c7winners.com` reports when the certificate is issued —
+usually a few minutes after the record resolves.
 
 `fly.toml` and the `Dockerfile` carry the rest: the volume mount, the health
 check on `/api/health`, and `TRUST_PROXY=1` for Fly's proxy.
