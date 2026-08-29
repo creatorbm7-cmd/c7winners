@@ -119,6 +119,8 @@ seed are predictable.
 | `src/accounts.ts` | Mint, house, and player accounts |
 | `src/server/` | Multi-user server: accounts, SQLite ledger, HTTP API |
 | `web/` | Static front end; talks to the API, no bundler |
+| `Dockerfile`, `fly.toml`, `railway.json` | Container deploy with a persistent volume |
+| `vercel.json`, `api/` | Serverless deploy, which needs Postgres |
 
 ```ts
 import { PlayCasino } from "c7winners";
