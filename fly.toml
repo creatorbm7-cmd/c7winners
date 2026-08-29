@@ -2,16 +2,20 @@
 #
 # Create the app and its volume once, then deploy:
 #
-#   fly launch --no-deploy --name c7winners
+#   fly launch --no-deploy --name c7winners-play
 #   fly volumes create c7winners_data --size 1 --region sin
 #   fly deploy
+#   fly certs add play.c7winners.com
+#
+# The app is named for what it is. Sharing a name with the real-money site would
+# invite someone to point the wrong hostname at the wrong service later.
 #
 # SQLite lives on the volume below, and each Fly machine gets its own volume.
 # Two machines would therefore mean two separate databases — a player's account
 # existing or not depending on which one answered. Keep this app at one machine,
 # or set DATABASE_URL to a Postgres instance and scale freely.
 
-app = "c7winners"
+app = "c7winners-play"
 primary_region = "sin"
 
 [build]
