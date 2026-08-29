@@ -70,8 +70,17 @@ the hostname is deliberate, since `play.c7winners.com` depends on DNS and a
 certificate that a workflow cannot fix. **Run → Deploy → Run workflow**
 redeploys the current `main` without a new commit.
 
-It deploys; it does not create. The app and the volume are the `fly launch` and
-`fly volumes create` above, done once by hand.
+It deploys; it does not create — with one deliberate exception. **Run workflow**
+has a *create the Fly app and its volume before deploying* box, off by default.
+Tick it the first time, when there is no app yet, and the run creates both from
+the names in `fly.toml` before deploying. That box is the whole reason a machine
+with `flyctl` is optional: the deploy token does the work.
+
+It is off by default because a volume is a billable resource and an app created
+under the wrong name is a worse outcome than a deploy that fails. Re-running with
+the box ticked is safe: an existing app is left alone, and an existing volume is
+never joined by a second one — two volumes would mean two machines with two
+separate databases, the failure `fly.toml`'s header warns about.
 
 ## Railway
 
