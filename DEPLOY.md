@@ -114,6 +114,20 @@ Settings → Networking generates a `*.up.railway.app` hostname, and takes a
 custom domain: add `play.c7winners.com` there, then put the CNAME it prints at
 the registrar, per [DNS](#dns).
 
+To check the volume actually took, read the deploy log. The server prints the
+path it opened, and warns when it had to create the database:
+
+```
+  database: sqlite (/data/c7winners.db)
+  WARNING: no database existed at /data/c7winners.db; a new one was created.
+```
+
+That warning is expected once, on the first deploy. Seeing it on a *later* one
+means the file is not on the volume and the accounts went with the old
+container. `/api/status` reports the same fact as `storage.createdThisBoot`, and
+the control panel turns it into a row, so the check does not depend on anyone
+reading logs. The same applies on Fly.
+
 ## Vercel + Supabase
 
 `vercel.json` and `api/index.mjs` are already set up: the API runs as one

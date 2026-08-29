@@ -45,6 +45,13 @@ const T = {
     reconcileSub:
       "Every chip the mint issued is held by the house or by a player — none has gone anywhere else.",
     negative: "No player holds chips their history never gave them",
+    storage: "Accounts survive a deploy",
+    storageOkSub: "The database was already there when this server started, so it is not living in the container.",
+    storageNewSub:
+      "No database existed when this server started. Expected on a first deploy; on any later one it means the file is not on a persistent volume and every account went with the old container.",
+    storagePgSub: "Postgres is a separate service, so a redeploy of this app does not touch it.",
+    persisted: "PERSISTED",
+    fresh: "FRESH",
     negativeSub: "A player account can never go below zero. Any that had would be counted here.",
     licence: "Gaming licence",
     psp: "Approved regulated payment processor",
@@ -89,6 +96,14 @@ const T = {
     negative: "സ്വന്തം ചരിത്രം നൽകാത്ത ചിപ്പ് ഒരു കളിക്കാരനുമില്ല",
     negativeSub:
       "ഒരു കളിക്കാരന്റെ അക്കൗണ്ട് ഒരിക്കലും പൂജ്യത്തിന് താഴെ പോകില്ല. പോയവ ഇവിടെ എണ്ണപ്പെടും.",
+    storage: "Deploy-നെ അതിജീവിക്കുന്ന അക്കൗണ്ടുകൾ",
+    storageOkSub:
+      "ഈ server തുടങ്ങുമ്പോൾ database ഇതിനകം ഉണ്ടായിരുന്നു — അതായത് അത് container-ന്റെ ഉള്ളിലല്ല.",
+    storageNewSub:
+      "ഈ server തുടങ്ങുമ്പോൾ database ഉണ്ടായിരുന്നില്ല. ആദ്യ deploy-ൽ ഇത് സ്വാഭാവികം; അതിന് ശേഷമുള്ള ഏത് deploy-ലും ഇതിനർത്ഥം ഫയൽ ഒരു volume-ൽ അല്ല, എല്ലാ അക്കൗണ്ടുകളും പഴയ container-നൊപ്പം പോയി എന്നാണ്.",
+    storagePgSub: "Postgres വേറൊരു സേവനമാണ്, ഈ ആപ്പ് redeploy ചെയ്താലും അതിനെ ബാധിക്കില്ല.",
+    persisted: "നിലനിൽക്കുന്നു",
+    fresh: "പുതിയത്",
     licence: "ഗെയിമിംഗ് ലൈസൻസ്",
     psp: "അംഗീകൃത നിയന്ത്രിത പേയ്‌മെന്റ് പ്രോസസർ",
     reserve: "ഉപയോക്തൃ ബാലൻസിനെ പിന്തുണയ്ക്കുന്ന കരുതൽ ധനം",
@@ -187,7 +202,21 @@ function render() {
     figure(t("edge"), `${(status.rules.houseEdge * 100).toFixed(1)}%`, true),
   );
 
+  // Only rendered when the deployment told us; an older server that does not
+  // report storage should show nothing rather than a guess.
+  const storageRow = () => {
+    const st = status.storage;
+    if (!st) return null;
+    if (st.engine === "postgres") {
+      return row("✓", t("storage"), t("storagePgSub"), "ok", t("persisted"));
+    }
+    return st.createdThisBoot
+      ? row("⚠️", t("storage"), t("storageNewSub"), "bad", t("fresh"))
+      : row("✓", t("storage"), t("storageOkSub"), "ok", t("persisted"));
+  };
+
   $("invariants").replaceChildren(
+    ...[storageRow()].filter(Boolean),
     row(
       status.booksReconcile ? "✓" : "✕",
       t("reconcile"),
