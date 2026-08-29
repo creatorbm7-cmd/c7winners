@@ -1,14 +1,16 @@
 /**
  * The c7winners server: the play-money API, with the static site alongside it.
  *
- * Serving both from one process keeps the front end same-origin, so there is no
- * CORS surface and no third-party origin to allow in the CSP.
+ * Serving both from one process keeps the front end same-origin, so by default
+ * there is no CORS surface and no third-party origin to allow in the CSP. A
+ * front end deployed elsewhere is the exception, and needs its origin named in
+ * ALLOWED_ORIGINS before the browser will let it read a reply.
  */
 import { createServer } from "node:http";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { extname, join, normalize } from "node:path";
-import { createApi } from "./api.js";
+import { createApi, parseAllowedOrigins } from "./api.js";
 import { createDatabase } from "./database.js";
 import { migrate } from "./schema.js";
 import { Store } from "./store.js";
@@ -25,6 +27,25 @@ const WEB_ROOT = process.env["WEB_ROOT"] ?? "dist-web";
  * Behind one load balancer, TRUST_PROXY=1.
  */
 const TRUST_PROXY = Number(process.env["TRUST_PROXY"] ?? 0);
+
+/**
+ * Browser origins allowed to call this API from a page they serve, separated by
+ * commas.
+ *
+ * Empty (the default) is the right answer whenever this server serves its own
+ * front end: that page is same-origin and needs no permission. Set it only when
+ * a page you control is served from somewhere else — `https://c7winners.com`,
+ * say — and name that origin exactly. There is no wildcard on purpose.
+ */
+const ALLOWED_ORIGINS = (() => {
+  try {
+    return parseAllowedOrigins(process.env["ALLOWED_ORIGINS"]);
+  } catch (err) {
+    // Named here rather than in the parser, so the operator reading the deploy
+    // log is told which variable to go and fix.
+    throw new Error(`ALLOWED_ORIGINS: ${(err as Error).message}`);
+  }
+})();
 
 const TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -54,6 +75,7 @@ const store = new Store(db);
 const api = createApi(store, {
   trustedProxies: Number.isInteger(TRUST_PROXY) && TRUST_PROXY > 0 ? TRUST_PROXY : 0,
   storage: { engine: dialect, createdThisBoot },
+  allowedOrigins: ALLOWED_ORIGINS,
 });
 
 const server = createServer((req, res) => {
@@ -83,6 +105,9 @@ server.listen(PORT, () => {
   console.log(`  database: ${dialect}${dialect === "sqlite" ? ` (${DB_PATH})` : ""}`);
   console.log(`  web root: ${WEB_ROOT}`);
   console.log(`  trusted proxies: ${TRUST_PROXY}${TRUST_PROXY === 0 ? " (X-Forwarded-For ignored)" : ""}`);
+  console.log(
+    `  allowed origins: ${ALLOWED_ORIGINS.join(", ") || "none (this API answers same-origin pages only)"}`,
+  );
 
   // Loud on purpose. A wiped database is otherwise indistinguishable from a
   // healthy empty one: the process starts, /api/health passes, and the only

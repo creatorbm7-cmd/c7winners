@@ -104,6 +104,12 @@ came from the proxy, so one visitor's traffic can exhaust the rate limit for
 everyone. The Dockerfile sets `PORT=8080`, and the server reads whatever `PORT`
 the platform provides, so that one needs no attention.
 
+A fourth setting applies only if the front end lives somewhere else — a separate
+Vercel project, say. Then `ALLOWED_ORIGINS` has to name that origin
+(`https://c7winners.com`), or the browser blocks every reply. Proxying `/api/*`
+from that host instead avoids the question altogether, at the cost of one more
+hop for `TRUST_PROXY` to count.
+
 > [!WARNING]
 > Keep this service at **one replica**, for the reason `fly.toml`'s header gives:
 > each replica gets its own volume, so a second would be a second, separate
@@ -158,7 +164,14 @@ npm run serve:api        # API + site on :8080
 ```
 
 Environment: `PORT` (default 8080), `DATABASE_PATH` (default `c7winners.db`),
-`WEB_ROOT` (default `dist-web`), `TRUST_PROXY` (default `0`).
+`WEB_ROOT` (default `dist-web`), `TRUST_PROXY` (default `0`), `ALLOWED_ORIGINS`
+(default empty).
+
+`ALLOWED_ORIGINS` is only for a front end served from somewhere other than this
+process — the page this server serves is same-origin and needs nothing. Name
+those origins exactly, comma-separated, and the server refuses to start on a
+value that could never match. See
+[Which origins may call it](API.md#which-origins-may-call-it).
 
 **Set `TRUST_PROXY` when you deploy behind a load balancer** — one hop is
 `TRUST_PROXY=1`. Left at 0 behind a proxy, every request looks like it comes from

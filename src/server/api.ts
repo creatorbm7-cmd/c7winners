@@ -73,6 +73,17 @@ export interface ApiConfig {
    * and /api/status says it out loud.
    */
   readonly storage?: StorageFacts;
+  /**
+   * Browser origins allowed to call this API from a page they serve.
+   *
+   * Empty — the default — means no CORS surface at all: the front end this
+   * server serves is same-origin, so it needs none, and a page anywhere else
+   * cannot read a response it gets. Listing an origin here lets exactly that
+   * origin's pages read replies, which is what a front end deployed separately
+   * needs. Exact origins only, and no wildcard: echoing back whatever origin
+   * asked is how a hostile page gets to read a signed-in player's data.
+   */
+  readonly allowedOrigins?: readonly string[];
 }
 
 export interface StorageFacts {
@@ -85,6 +96,35 @@ export interface StorageFacts {
    * look identical from outside until the second one happens twice.
    */
   readonly createdThisBoot: boolean;
+}
+
+/**
+ * The origins from a comma-separated list, refusing anything that is not one.
+ *
+ * A misspelled entry would otherwise fail silently — the header simply never
+ * matches — and the only symptom would be a CORS error in someone's browser,
+ * with nothing in the deploy log to explain it. Better to not start.
+ */
+export function parseAllowedOrigins(raw: string | undefined): string[] {
+  const entries = (raw ?? "").split(",").map((entry) => entry.trim()).filter(Boolean);
+  for (const entry of entries) {
+    let parsed: URL;
+    try {
+      parsed = new URL(entry);
+    } catch {
+      throw new Error(
+        `${JSON.stringify(entry)} is not an origin. ` +
+          `Write it like https://c7winners.com — scheme and host, nothing else.`,
+      );
+    }
+    if (parsed.origin !== entry) {
+      throw new Error(
+        `Use the origin alone — ${JSON.stringify(parsed.origin)}, not ${JSON.stringify(entry)}. ` +
+          `A path, a trailing slash or a wildcard never matches.`,
+      );
+    }
+  }
+  return entries;
 }
 
 function send(res: ServerResponse, status: number, payload: unknown): void {
@@ -142,6 +182,7 @@ export function createApi(store: Store, config: ApiConfig = {}) {
   const trustedProxies = config.trustedProxies ?? 0;
   const clock = config.clock ?? Date.now;
   const storage = config.storage;
+  const allowedOrigins = new Set(config.allowedOrigins ?? []);
   const limiter = {
     global: new RateLimiter(limits.global, clock),
     register: new RateLimiter(limits.register, clock),
@@ -161,6 +202,24 @@ export function createApi(store: Store, config: ApiConfig = {}) {
       retryAfterMs: decision.retryAfterMs,
     });
     return false;
+  }
+
+  /**
+   * Lets one listed origin read this response, or leaves it unreadable.
+   *
+   * Echoes the caller's own origin rather than a wildcard, so the header names
+   * exactly one origin and `vary` keeps a cache from handing one origin's copy
+   * to another. Nothing is sent for an origin that is not listed, or when the
+   * list is empty — the browser then blocks the response, which is the point.
+   *
+   * No `access-control-allow-credentials`: authentication here is a bearer
+   * token the page attaches deliberately, so cookies never need to ride along.
+   */
+  function applyCors(req: IncomingMessage, res: ServerResponse): void {
+    const origin = req.headers.origin;
+    if (typeof origin !== "string" || !allowedOrigins.has(origin)) return;
+    res.setHeader("access-control-allow-origin", origin);
+    res.setHeader("vary", "origin");
   }
 
   async function requireUser(ctx: Ctx): Promise<User | null> {
@@ -342,8 +401,27 @@ export function createApi(store: Store, config: ApiConfig = {}) {
     const path = (req.url ?? "/").split("?")[0] ?? "/";
     if (!path.startsWith("/api/")) return false;
 
+    // Before the rate limiter, so a 429 is one the calling page can read and
+    // report rather than one the browser hides behind a CORS failure.
+    applyCors(req, res);
+
     const ip = clientAddress(req.headers["x-forwarded-for"], req.socket.remoteAddress, trustedProxies);
     if (!withinLimit(res, limiter.global, ip, "requests")) return true;
+
+    if (req.method === "OPTIONS") {
+      const asking = String(req.headers["access-control-request-method"] ?? "").toUpperCase();
+      // Answered only for an allowed origin asking about a route that exists, so
+      // a preflight cannot be used to map the surface from anywhere else.
+      if (res.hasHeader("access-control-allow-origin") && routes[`${asking} ${path}`]) {
+        res.setHeader("access-control-allow-methods", "GET, POST, OPTIONS");
+        res.setHeader("access-control-allow-headers", "authorization, content-type");
+        res.setHeader("access-control-max-age", "600");
+        res.writeHead(204).end();
+        return true;
+      }
+      send(res, 404, { error: "No such endpoint." });
+      return true;
+    }
 
     const route = routes[`${req.method ?? "GET"} ${path}`];
     if (!route) {
