@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createServer, type Server } from "node:http";
 import { after, describe, it } from "node:test";
 import type { AddressInfo } from "node:net";
-import { createApi } from "./api.js";
+import { createApi, parseAllowedOrigins } from "./api.js";
 import { migrate } from "./schema.js";
 import { SqliteDb } from "./db-sqlite.js";
 import { Store } from "./store.js";
@@ -355,5 +355,114 @@ describe("rate limiting", () => {
     const res = await fetch(`${s.origin}/api/health`);
     assert.equal(res.status, 429);
     assert.ok(Number(res.headers.get("retry-after")) > 0, "no Retry-After header");
+  });
+});
+
+describe("cross-origin access", () => {
+  const PAGE = "https://c7winners.com";
+
+  it("allows no origin at all by default", async () => {
+    const s = await serve();
+    after(s.close);
+    const res = await fetch(`${s.origin}/api/status`, { headers: { origin: PAGE } });
+    assert.equal(res.status, 200);
+    assert.equal(res.headers.get("access-control-allow-origin"), null);
+  });
+
+  it("answers a listed origin by name, not with a wildcard", async () => {
+    const s = await serve({}, { allowedOrigins: [PAGE] });
+    after(s.close);
+    const res = await fetch(`${s.origin}/api/status`, { headers: { origin: PAGE } });
+    assert.equal(res.headers.get("access-control-allow-origin"), PAGE);
+    // Without this a shared cache could hand one origin the copy made for another.
+    assert.equal(res.headers.get("vary"), "origin");
+  });
+
+  it("says nothing to an origin that is not listed", async () => {
+    const s = await serve({}, { allowedOrigins: [PAGE] });
+    after(s.close);
+    const res = await fetch(`${s.origin}/api/status`, { headers: { origin: "https://evil.example" } });
+    assert.equal(res.headers.get("access-control-allow-origin"), null);
+  });
+
+  it("does not treat a matching prefix as a match", async () => {
+    const s = await serve({}, { allowedOrigins: [PAGE] });
+    after(s.close);
+    const res = await fetch(`${s.origin}/api/status`, {
+      headers: { origin: "https://c7winners.com.evil.example" },
+    });
+    assert.equal(res.headers.get("access-control-allow-origin"), null);
+  });
+
+  it("passes the preflight a signed-in POST depends on", async () => {
+    const s = await serve({}, { allowedOrigins: [PAGE] });
+    after(s.close);
+    const res = await fetch(`${s.origin}/api/bet`, {
+      method: "OPTIONS",
+      headers: {
+        origin: PAGE,
+        "access-control-request-method": "POST",
+        "access-control-request-headers": "authorization, content-type",
+      },
+    });
+    assert.equal(res.status, 204);
+    assert.equal(res.headers.get("access-control-allow-origin"), PAGE);
+    assert.match(res.headers.get("access-control-allow-headers") ?? "", /authorization/);
+    assert.match(res.headers.get("access-control-allow-methods") ?? "", /POST/);
+  });
+
+  it("refuses a preflight from an origin that is not listed", async () => {
+    const s = await serve({}, { allowedOrigins: [PAGE] });
+    after(s.close);
+    const res = await fetch(`${s.origin}/api/bet`, {
+      method: "OPTIONS",
+      headers: { origin: "https://evil.example", "access-control-request-method": "POST" },
+    });
+    assert.equal(res.status, 404);
+    assert.equal(res.headers.get("access-control-allow-origin"), null);
+  });
+
+  it("refuses a preflight for a route that does not exist", async () => {
+    const s = await serve({}, { allowedOrigins: [PAGE] });
+    after(s.close);
+    const res = await fetch(`${s.origin}/api/deposit`, {
+      method: "OPTIONS",
+      headers: { origin: PAGE, "access-control-request-method": "POST" },
+    });
+    assert.equal(res.status, 404);
+  });
+
+  it("lets the page read the rate-limit refusal too", async () => {
+    // A 429 the browser hides behind a CORS error is a 429 nobody can act on.
+    const s = await serve({}, {
+      allowedOrigins: [PAGE],
+      rateLimits: { global: { capacity: 1, refillMs: 60_000 } },
+    });
+    after(s.close);
+    await fetch(`${s.origin}/api/health`, { headers: { origin: PAGE } });
+    const res = await fetch(`${s.origin}/api/health`, { headers: { origin: PAGE } });
+    assert.equal(res.status, 429);
+    assert.equal(res.headers.get("access-control-allow-origin"), PAGE);
+  });
+});
+
+describe("reading an origin list", () => {
+  it("takes a comma-separated list, spaces and all", () => {
+    assert.deepEqual(parseAllowedOrigins(" https://c7winners.com , http://localhost:5173 "), [
+      "https://c7winners.com",
+      "http://localhost:5173",
+    ]);
+  });
+
+  it("is empty when unset", () => {
+    assert.deepEqual(parseAllowedOrigins(undefined), []);
+    assert.deepEqual(parseAllowedOrigins(""), []);
+  });
+
+  it("refuses what would never match, rather than matching nothing quietly", () => {
+    // Each of these is a plausible thing to type and none of them is an origin.
+    for (const bad of ["*", "c7winners.com", "https://c7winners.com/", "https://c7winners.com/app"]) {
+      assert.throws(() => parseAllowedOrigins(bad), /origin/i, `accepted ${bad}`);
+    }
   });
 });

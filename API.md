@@ -40,27 +40,42 @@ Every failure carries a human-readable reason:
 | 429 | A rate limit; `retry-after` and `retryAfterMs` say how long |
 | 500 | Something broke server-side. The response says only that; the detail goes to the server log |
 
-### Same-origin only
+### Which origins may call it
 
-The server sends no `Access-Control-Allow-Origin`, and `OPTIONS` on any route is
-a 404 — a browser preflight fails, so **a page served from a different origin
-cannot call this API from JavaScript.** That is deliberate: `serve:api` runs the
-API and the site in one process precisely so the front end is same-origin and
-there is no CORS surface to get wrong.
+By default, only its own. The server sends no `Access-Control-Allow-Origin` and
+answers `OPTIONS` with a 404, so a browser preflight fails and **a page served
+from a different origin cannot read anything from this API.** That is the right
+default: `serve:api` runs the API and the site in one process precisely so the
+front end is same-origin and needs no permission at all.
 
-So a front end hosted somewhere else — a separate Vercel or Netlify project, say
-— cannot reach this API by pointing a base-URL variable at it. Two ways round it,
-in order of preference:
+A front end deployed somewhere else — a separate Vercel or Netlify project, say
+— therefore cannot reach this API just by pointing a base-URL variable at it.
+Three ways to fix that, in order of preference:
 
 1. **Serve the front end from this server**, as `npm run serve:api` already does.
    The base URL is then `/api`, relative, and nothing cross-origin happens.
 2. **Put both behind one hostname**, with the host's rewrite rules proxying
-   `/api/*` to this server. The browser still sees one origin.
+   `/api/*` to this server. The browser still sees one origin. Remember to raise
+   `TRUST_PROXY` by one for the extra hop, or every request will arrive wearing
+   the proxy's address and share one rate-limit bucket.
+3. **Name the origin in `ALLOWED_ORIGINS`**, comma-separated:
 
-Adding CORS headers is the third option, and the one to think hardest about: it
-means naming exactly which origins may call the API and keeping that list
-correct, in exchange for splitting a deployment that currently has no reason to
-be split. Nothing in the build does it today.
+   ```
+   ALLOWED_ORIGINS=https://c7winners.com,http://localhost:5173
+   ```
+
+   Each listed origin gets `access-control-allow-origin` echoed back **by name**
+   — never a wildcard — along with `vary: origin`. An unlisted origin gets no
+   header, and its preflight is the same 404 as before. `authorization` and
+   `content-type` are the allowed request headers; credentials are not enabled,
+   because auth here is a bearer token the page attaches itself and cookies
+   never need to ride along.
+
+   Write bare origins: scheme and host, no trailing slash, no path, no `*`. The
+   server refuses to start on anything else rather than accept a value that
+   could only ever fail to match. A rate-limit refusal carries the CORS headers
+   too, so a 429 reaches the page as a 429 instead of an unexplained network
+   error.
 
 ## The endpoints
 
