@@ -102,9 +102,17 @@ jobs:
           volume=$(sed -n 's/^ *source *= *"\(.*\)"/\1/p' fly.toml | head -1)
           echo "app=$app region=$region volume=$volume org=$FLY_ORG"
 
-          # Already existing is the expected outcome on a re-run, not a failure.
-          flyctl apps create "$app" -o "$FLY_ORG" \
-            || echo "apps create did not succeed; continuing in case it already exists"
+          # Already existing is the expected outcome on a re-run. Anything else
+          # is not: going on to create a volume for an app that is not there
+          # just buries Fly's reason under a second, less useful error.
+          if ! flyctl apps create "$app" -o "$FLY_ORG"; then
+            if flyctl apps list | grep -qw "$app"; then
+              echo "$app already exists, leaving it alone"
+            else
+              echo "::error::Could not create $app, and it does not exist. Fly's reason is the Error line above."
+              exit 1
+            fi
+          fi
 
           # A second volume of the same name would mean a second machine with a
           # second, separate database - the failure fly.toml's header warns
