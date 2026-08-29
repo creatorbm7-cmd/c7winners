@@ -50,6 +50,7 @@ jobs:
       # to come from, and a token added under the wrong tab is indistinguishable
       # from no token at all — so check before spending a build on it.
       - name: Check for the deploy token
+        id: token
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
           # Only whether it exists, never its value: a variable is not a secret.
@@ -110,7 +111,7 @@ jobs:
       # itself is never echoed, and this runs only when there was a token to
       # try in the first place.
       - name: What this token can reach
-        if: failure() && secrets.FLY_API_TOKEN != ''
+        if: failure() && steps.token.outcome == 'success'
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: |
