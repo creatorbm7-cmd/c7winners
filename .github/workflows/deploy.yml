@@ -45,6 +45,23 @@ jobs:
       name: production
       url: https://play.c7winners.com
     steps:
+      # The one failure this workflow can explain better than flyctl can. Its
+      # "no access token available" says nothing about where the token was meant
+      # to come from, and a token added under the wrong tab is indistinguishable
+      # from no token at all — so check before spending a build on it.
+      - name: Check for the deploy token
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          # Only whether it exists, never its value: a variable is not a secret.
+          SAME_NAME_VARIABLE: ${{ vars.FLY_API_TOKEN != '' }}
+        run: |
+          if [ -n "$FLY_API_TOKEN" ]; then exit 0; fi
+          echo "::error::secrets.FLY_API_TOKEN is empty. Add the deploy token under Settings -> Secrets and variables -> Actions, on the Secrets tab, under Repository secrets, named exactly FLY_API_TOKEN. Create one with: fly tokens create deploy -a c7winners-play. See DEPLOY.md."
+          if [ "$SAME_NAME_VARIABLE" = "true" ]; then
+            echo "::error::A repository variable named FLY_API_TOKEN exists. Variables are not secrets - their values are shown in the UI and printed in logs, so a token must never be one. Delete it and add the token on the Secrets tab instead."
+          fi
+          exit 1
+
       - uses: actions/checkout@v7
         with:
           # A workflow_run event checks out the default branch's tip by default,
