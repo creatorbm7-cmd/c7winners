@@ -36,6 +36,29 @@ export interface BetOutcome {
   readonly balance: Chips;
 }
 
+/** Aggregate house state, for a status panel. Carries no per-player detail. */
+export interface PlatformStatus {
+  /** Chips the mint has issued and not burned. */
+  readonly chipsInCirculation: Chips;
+  /** What the house is up or down against the players. */
+  readonly housePosition: Chips;
+  /** Chips held across every player account. */
+  readonly playerChips: Chips;
+  readonly ledgerEntries: number;
+  readonly players: number;
+  /**
+   * Whether the chips issued are exactly the chips accounted for.
+   *
+   * Not the zero-sum identity, which holds by schema and would only ever say
+   * yes. This asks whether every issued chip is still somewhere a name is known
+   * for, so a chip moved to an account outside the mint, the house and the
+   * players shows up as a no.
+   */
+  readonly booksReconcile: boolean;
+  /** Player accounts holding chips their own history never gave them. */
+  readonly negativeAccounts: number;
+}
+
 export interface LeaderboardRow {
   readonly username: string;
   readonly balance: Chips;
@@ -262,6 +285,51 @@ export class Store {
     if (negative?.["account"]) {
       throw new Error(`Player account ${String(negative["account"])} is negative`);
     }
+  }
+
+  /**
+   * The whole house at a glance, derived from the entry log every time.
+   *
+   * Nothing here is stored and refreshed: a panel fed by a cached summary can
+   * report a healthy platform long after it stopped being one, which is the
+   * failure this repo is built to make impossible.
+   */
+  async status(): Promise<PlatformStatus> {
+    const row = await this.#db.get(
+      `SELECT
+         (SELECT COALESCE(SUM(amount), 0) FROM entries WHERE from_account = ?)
+       - (SELECT COALESCE(SUM(amount), 0) FROM entries WHERE to_account = ?) AS circulation,
+         (SELECT COALESCE(SUM(amount), 0) FROM entries WHERE to_account = ?)
+       - (SELECT COALESCE(SUM(amount), 0) FROM entries WHERE from_account = ?) AS house,
+         (SELECT COALESCE(SUM(amount), 0) FROM entries WHERE to_account LIKE 'player:%')
+       - (SELECT COALESCE(SUM(amount), 0) FROM entries WHERE from_account LIKE 'player:%') AS players,
+         (SELECT COUNT(*) FROM entries) AS entry_count,
+         (SELECT COUNT(*) FROM users) AS user_count,
+         (SELECT COUNT(*) FROM (
+            SELECT a.account FROM (
+              SELECT to_account AS account FROM entries
+              UNION SELECT from_account FROM entries
+            ) a
+            WHERE a.account LIKE 'player:%'
+              AND (COALESCE((SELECT SUM(amount) FROM entries WHERE to_account = a.account), 0)
+                 - COALESCE((SELECT SUM(amount) FROM entries WHERE from_account = a.account), 0)) < 0
+          ) neg) AS negative_count`,
+      [MINT, MINT, HOUSE, HOUSE],
+    );
+
+    const chipsInCirculation = Number(row?.["circulation"] ?? 0);
+    const housePosition = Number(row?.["house"] ?? 0);
+    const playerChips = Number(row?.["players"] ?? 0);
+
+    return {
+      chipsInCirculation,
+      housePosition,
+      playerChips,
+      ledgerEntries: Number(row?.["entry_count"] ?? 0),
+      players: Number(row?.["user_count"] ?? 0),
+      booksReconcile: chipsInCirculation === playerChips + housePosition,
+      negativeAccounts: Number(row?.["negative_count"] ?? 0),
+    };
   }
 
   /* ---------- gameplay ---------- */
