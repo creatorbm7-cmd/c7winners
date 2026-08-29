@@ -110,6 +110,10 @@ the platform provides, so that one needs no attention.
 > database, and whether an account exists would depend on which replica answered.
 > To run more than one, set `DATABASE_URL` to a Postgres instance instead.
 
+Settings → Networking generates a `*.up.railway.app` hostname, and takes a
+custom domain: add `play.c7winners.com` there, then put the CNAME it prints at
+the registrar, per [DNS](#dns).
+
 ## Vercel + Supabase
 
 `vercel.json` and `api/index.mjs` are already set up: the API runs as one
@@ -200,15 +204,30 @@ and that `index.html` is the directory index.
 
 ## DNS
 
-`c7winners.com` is already registered. Point it at whichever host you chose:
+The chip room lives at **`play.c7winners.com`**, a subdomain. The apex
+`c7winners.com` is a separate site and is deliberately left alone: pointing it
+here would take it down, and nothing in this repo needs it.
+
+That makes the DNS a single record, at the registrar holding `c7winners.com`:
 
 | Record | Name | Value |
 | --- | --- | --- |
-| A | `@` | the host's apex IP (they will give you this) |
-| CNAME | `www` | the host's target, e.g. `cname.vercel-dns.com` |
+| CNAME | `play` | whatever the host gives you for this app |
 
-Propagation is usually minutes, occasionally up to 48 hours. HTTPS certificates
-are issued automatically by all three hosts once the records resolve.
+The value depends on which host is serving it — `c7winners-play.fly.dev` for
+Fly, or the target Railway prints when you add the custom domain. Only one host
+holds `play` at a time; the record is what decides which.
+
+A subdomain is the easy case, which is why it is the one chosen: apex records
+cannot be CNAMEs, and a registrar without ALIAS support (GoDaddy, among others)
+then needs its nameservers moved to a provider that flattens them. None of that
+applies here.
+
+Name the record `play`, not `play.c7winners.com` — registrars append the domain
+themselves, and the full name produces `play.c7winners.com.c7winners.com`.
+Propagation is usually minutes. Both hosts issue the certificate automatically
+once the record resolves; behind Cloudflare, leave the record unproxied until it
+does.
 
 ## What is being deployed
 
