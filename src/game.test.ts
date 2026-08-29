@@ -76,19 +76,38 @@ describe("settlement", () => {
     assert.equal(payout, 5); // floor(3 * 1.96)
   });
 
-  it("gives the house its stated edge over many rounds", async () => {
-    const seed = generateServerSeed();
-    const stake = 1000;
+  it("realises exactly the stated edge over a uniform sweep of rolls", () => {
+    // Deliberately not a Monte Carlo run. Sampling random rolls estimates the
+    // edge with a standard error of mult*sqrt(p(1-p)/n) — at 40,000 rounds that
+    // is 0.0049, so a +/-0.01 assertion sits just 2 standard errors out and
+    // fails around 4% of the time. That is a coin flip the suite should not be
+    // taking.
+    //
+    // Whether rolls are uniform is already checked above. What is left is
+    // whether settle() applies the multiplier correctly, and that is exact: feed
+    // it evenly spaced rolls and the realised edge must equal the stated one.
+    const rounds = 1000;
+    const stake = 10_000; // large enough that flooring the payout costs nothing
     let staked = 0;
     let returned = 0;
-    for (let n = 0; n < 40_000; n++) {
+    for (let i = 0; i < rounds; i++) {
+      const rollValue = (i + 0.5) / rounds; // 0.0005, 0.0015, ... 0.9995
       staked += stake;
-      returned += settle(await roll(seed, "c", n), stake, COIN_FLIP).payout;
+      returned += settle(rollValue, stake, COIN_FLIP).payout;
     }
-    const edge = (staked - returned) / staked;
-    assert.ok(
-      Math.abs(edge - COIN_FLIP.houseEdge) < 0.01,
-      `house edge came out at ${edge}, expected about ${COIN_FLIP.houseEdge}`,
-    );
+    assert.equal((staked - returned) / staked, COIN_FLIP.houseEdge);
+  });
+
+  it("realises the stated edge for other rules too", () => {
+    const rules = { winChance: 0.25, houseEdge: 0.05 };
+    const rounds = 1000;
+    const stake = 10_000;
+    let staked = 0;
+    let returned = 0;
+    for (let i = 0; i < rounds; i++) {
+      staked += stake;
+      returned += settle((i + 0.5) / rounds, stake, rules).payout;
+    }
+    assert.equal((staked - returned) / staked, rules.houseEdge);
   });
 });
