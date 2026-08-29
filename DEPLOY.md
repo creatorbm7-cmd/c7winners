@@ -12,6 +12,40 @@ SQLite otherwise. Which one you need depends on the host.
 | Vercel and other serverless | Postgres | The filesystem resets between requests, so SQLite would lose every account |
 | Fly, Railway, Render, a VPS | Either | A persistent disk means SQLite works, and needs no second service |
 
+## Fly.io (recommended)
+
+A persistent disk means SQLite works, so there is no second service to run and
+no secret to set.
+
+```bash
+fly launch --no-deploy --name c7winners
+fly volumes create c7winners_data --size 1 --region sin
+fly deploy
+fly certs add c7winners.com
+```
+
+`fly.toml` and the `Dockerfile` carry the rest: the volume mount, the health
+check on `/api/health`, and `TRUST_PROXY=1` for Fly's proxy.
+
+> [!WARNING]
+> Keep this app at **one machine**. Each Fly machine gets its own volume, so a
+> second machine would be a second, separate database — whether an account exists
+> would depend on which machine answered. `fly scale count 1` is the safe
+> setting. To run more than one, set `DATABASE_URL` to a Postgres instance and
+> the same image scales freely.
+
+Back up by copying the database off the volume:
+
+```bash
+fly ssh console -C "cat /data/c7winners.db" > backup.db
+```
+
+## Railway
+
+`railway.json` builds the same Dockerfile. Add a volume mounted at `/data` in
+the service settings, then set `DATABASE_PATH=/data/c7winners.db`. Without the
+volume every deploy starts with no accounts.
+
 ## Vercel + Supabase
 
 `vercel.json` and `api/index.mjs` are already set up: the API runs as one

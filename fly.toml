@@ -1,0 +1,49 @@
+# Fly.io deployment for the play-money chip room.
+#
+# Create the app and its volume once, then deploy:
+#
+#   fly launch --no-deploy --name c7winners
+#   fly volumes create c7winners_data --size 1 --region sin
+#   fly deploy
+#
+# SQLite lives on the volume below, and each Fly machine gets its own volume.
+# Two machines would therefore mean two separate databases — a player's account
+# existing or not depending on which one answered. Keep this app at one machine,
+# or set DATABASE_URL to a Postgres instance and scale freely.
+
+app = "c7winners"
+primary_region = "sin"
+
+[build]
+
+[env]
+  PORT = "8080"
+  DATABASE_PATH = "/data/c7winners.db"
+  WEB_ROOT = "dist-web"
+  # Fly terminates TLS and forwards the client address, so exactly one hop in
+  # front is ours. Leaving this at 0 would make every request look like it came
+  # from the proxy, and one visitor could exhaust the rate limit for everyone.
+  TRUST_PROXY = "1"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "suspend"
+  auto_start_machines = true
+  # One machine, for the reason in the header comment.
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "10s"
+    method = "GET"
+    path = "/api/health"
+
+[[mounts]]
+  source = "c7winners_data"
+  destination = "/data"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

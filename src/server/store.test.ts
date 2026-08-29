@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { after, describe, it } from "node:test";
 import { verifyCommitment } from "../game.js";
 import { InsufficientChipsError } from "../types.js";
+import type { Db } from "./db.js";
 import { migrate } from "./schema.js";
 import { testDatabases, type TestEngine } from "./testing.js";
 import {
@@ -23,9 +24,22 @@ import {
 const ENGINES = await testDatabases();
 const PASSWORD = "correct-horse";
 
+/**
+ * Every database a fixture opens, closed when the file finishes.
+ *
+ * Each Postgres fixture holds a pool; without this they stay open for the life
+ * of the process, so the suite ends holding connections it will never use and
+ * a large enough file would run the server out of them.
+ */
+const OPENED: Db[] = [];
+after(async () => {
+  await Promise.all(OPENED.map((db) => db.close().catch(() => {})));
+});
+
 async function fixture(engine: TestEngine, overrides: Record<string, unknown> = {}) {
   let now = 1_000_000;
   const db = await engine.open();
+  OPENED.push(db);
   await migrate(db, engine.dialect);
   const store = new Store(db, {
     faucetAmount: 1000,
