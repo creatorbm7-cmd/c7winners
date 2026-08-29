@@ -290,6 +290,21 @@ export function createApi(store: Store, config: ApiConfig = {}) {
       send(ctx.res, 200, { players: await store.leaderboard() });
     },
 
+    /**
+     * The house at a glance: what this build can do, and what it is holding.
+     *
+     * Public and aggregate — no usernames, no per-player figures — because the
+     * claim it exists to support ("nothing here moves real money") is one anyone
+     * should be able to check without an account.
+     */
+    "GET /api/status": async (ctx) => {
+      send(ctx.res, 200, {
+        capabilities: CAPABILITIES,
+        rules: store.rules,
+        ...(await store.status()),
+      });
+    },
+
     "GET /api/health": async (ctx) => {
       try {
         await store.assertHealthy();

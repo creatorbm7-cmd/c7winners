@@ -9,6 +9,6 @@ cd "$(dirname "$0")/.."
 
 rm -rf dist-web
 mkdir -p dist-web
-cp web/index.html web/app.js dist-web/
+cp web/index.html web/app.js web/control.html web/control.js dist-web/
 
 printf '==> dist-web/ built (%s files)\n' "$(find dist-web -type f | wc -l)"
