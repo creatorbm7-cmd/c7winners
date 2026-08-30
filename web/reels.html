@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="description" content="C7 Reels — a swipeable play-money slot feed. Free chips, no cash value, no deposits or withdrawals.">
+<meta name="robots" content="index,follow">
+<meta name="color-scheme" content="dark">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8E%B0%3C/text%3E%3C/svg%3E">
+<title>C7 Reels</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#04080a;--panel:#0b1a12;--panel-2:#081410;--ink:#eafff4;--mut:#8fbfa6;
+  --line:rgba(240,201,74,.18);--hair:rgba(240,201,74,.32);
+  --gold:#f0c94a;--gold-l:#fff4cf;--gold-d:#c68a2e;
+  --grn:#2ee08a;--red:#ff6b7d;
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --accent:var(--gold);
+}
+html,body{height:100%}
+body{
+  font-family:Inter,system-ui,sans-serif;color:var(--ink);background:var(--bg);
+  -webkit-font-smoothing:antialiased;overflow:hidden;
+}
+.num{font-variant-numeric:tabular-nums}
+.mono{font-family:var(--mono)}
+button{font-family:inherit;cursor:pointer;border:0;color:inherit}
+button:focus-visible{outline:2px solid var(--gold-l);outline-offset:2px}
+button:disabled{cursor:not-allowed;opacity:.45}
+[hidden]{display:none!important}
+
+/* ---------- chrome ---------- */
+.top{
+  position:fixed;top:0;left:0;right:0;z-index:30;display:flex;align-items:center;justify-content:space-between;
+  gap:10px;padding:11px 14px;padding-top:max(11px,env(safe-area-inset-top));
+  background:linear-gradient(180deg,rgba(4,8,10,.92),rgba(4,8,10,0));
+}
+.top h1{font-size:15px;font-weight:900;letter-spacing:-.2px}
+.top h1 b{background:linear-gradient(90deg,var(--gold-d),var(--gold) 50%,var(--gold-l));
+  -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.wallet{display:flex;align-items:center;gap:8px}
+.chips{font-size:14px;font-weight:900;letter-spacing:-.3px;padding:6px 12px;border-radius:999px;
+  border:1px solid var(--hair);background:rgba(8,20,14,.75);backdrop-filter:blur(8px)}
+.chips small{font-size:9.5px;font-weight:800;letter-spacing:1px;color:var(--mut);margin-left:5px}
+.mini{font-size:11px;font-weight:800;padding:7px 12px;border-radius:999px;
+  border:1px solid var(--hair);background:rgba(8,20,14,.75);color:var(--gold)}
+
+/* ---------- the feed ---------- */
+.feed{height:100dvh;overflow-y:auto;scroll-snap-type:y mandatory;scroll-behavior:smooth}
+.feed::-webkit-scrollbar{width:0}
+.reel{
+  height:100dvh;scroll-snap-align:start;scroll-snap-stop:always;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;
+  padding:74px 16px calc(28px + env(safe-area-inset-bottom));position:relative;
+}
+.reel::before{
+  content:"";position:absolute;inset:0;z-index:-1;
+  background:radial-gradient(115% 55% at 50% 8%,var(--glow),transparent 62%),var(--bg);
+}
+.name{text-align:center}
+.name h2{font-size:23px;font-weight:900;letter-spacing:-.6px}
+.name p{font-size:11.5px;color:var(--mut);margin-top:5px}
+
+/* ---------- the machine ---------- */
+.window{
+  display:grid;grid-template-columns:repeat(3,1fr);gap:9px;width:min(360px,92vw);
+  padding:14px;border-radius:20px;border:1px solid var(--line);
+  background:linear-gradient(160deg,var(--panel),var(--panel-2));
+  box-shadow:0 22px 60px -30px rgba(0,0,0,.95);
+}
+.slot{
+  aspect-ratio:1;border-radius:14px;background:rgba(4,10,7,.72);border:1px solid rgba(240,201,74,.10);
+  display:grid;place-items:center;font-size:min(46px,13vw);line-height:1;overflow:hidden;
+}
+.slot span{display:block}
+.slot.spin span{animation:roll .28s linear infinite}
+@keyframes roll{
+  0%{transform:translateY(-58%);opacity:.25}
+  50%{transform:translateY(0);opacity:1}
+  100%{transform:translateY(58%);opacity:.25}
+}
+.window.won{border-color:var(--grn);box-shadow:0 0 0 1px var(--grn),0 22px 60px -28px rgba(46,224,138,.55)}
+.window.lost{border-color:rgba(255,107,125,.4)}
+
+/* ---------- controls ---------- */
+.verdict{min-height:26px;font-size:15px;font-weight:900;letter-spacing:-.2px;text-align:center}
+.verdict.won{color:var(--grn)}
+.verdict.lost{color:var(--mut)}
+.stakes{display:flex;gap:7px}
+.stakes button{
+  font-size:12.5px;font-weight:800;padding:8px 14px;border-radius:999px;
+  border:1px solid var(--hair);background:rgba(8,20,14,.6);color:var(--mut)
+}
+.stakes button[aria-pressed=true]{background:linear-gradient(90deg,var(--gold-d),var(--gold));color:#120a02;border-color:transparent}
+.spin{
+  font-size:15px;font-weight:900;letter-spacing:.3px;padding:15px 0;border-radius:15px;width:min(360px,92vw);
+  background:linear-gradient(90deg,var(--gold-d),var(--gold) 55%,var(--gold-l));color:#120a02;
+  transition:filter .15s,transform .08s
+}
+.spin:hover:not(:disabled){filter:brightness(1.07)}
+.spin:active:not(:disabled){transform:translateY(1px)}
+.fair{font-size:10.5px;color:var(--mut);text-align:center;line-height:1.6}
+.fair b{color:var(--ink);font-weight:700}
+.hint{font-size:11px;color:var(--mut);text-align:center}
+.hint a{color:var(--gold)}
+
+/* ---------- sign-in sheet ---------- */
+.sheet{position:fixed;inset:0;z-index:40;display:grid;place-items:center;padding:18px;
+  background:rgba(3,7,5,.86);backdrop-filter:blur(10px)}
+.sheet .card{width:min(380px,100%);border-radius:18px;border:1px solid var(--line);
+  background:linear-gradient(160deg,var(--panel),var(--panel-2));padding:20px}
+.sheet h3{font-size:17px;font-weight:900;letter-spacing:-.3px}
+.sheet p{font-size:12px;color:var(--mut);margin-top:6px;line-height:1.6}
+.sheet label{display:block;font-size:10.5px;font-weight:800;letter-spacing:.9px;color:var(--mut);
+  text-transform:uppercase;margin:14px 0 6px}
+.sheet input{width:100%;font-family:inherit;font-size:14px;color:var(--ink);padding:11px 13px;
+  border-radius:11px;border:1px solid var(--hair);background:rgba(4,10,7,.7)}
+.sheet input:focus{outline:2px solid var(--gold-l);outline-offset:1px}
+.row{display:flex;gap:9px;margin-top:16px}
+.row button{flex:1;font-size:13.5px;font-weight:800;padding:12px 0;border-radius:12px}
+.row .go{background:linear-gradient(90deg,var(--gold-d),var(--gold));color:#120a02}
+.row .alt{border:1px solid var(--hair);background:transparent;color:var(--ink)}
+.msg{font-size:12px;margin-top:12px;min-height:17px}
+.msg.bad{color:var(--red)}
+.msg.ok{color:var(--grn)}
+</style>
+</head>
+<body>
+
+<div class="top">
+  <h1><b>C7</b> Reels</h1>
+  <div class="wallet">
+    <button id="faucet" class="mini" hidden>+ Free chips</button>
+    <div class="chips"><span id="balance" class="num">—</span><small>CHIPS</small></div>
+  </div>
+</div>
+
+<div class="feed" id="feed"></div>
+
+<div class="sheet" id="sheet" hidden>
+  <div class="card">
+    <h3>Play for chips</h3>
+    <p>Chips are free, have no cash value, and cannot be bought, sold or cashed out. There is no deposit or withdrawal in this build — not a disabled one, an absent one.</p>
+    <label for="username">Username</label>
+    <input id="username" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="3–24 letters, numbers, - or _">
+    <label for="password">Password</label>
+    <input id="password" type="password" autocomplete="current-password" placeholder="at least 8 characters">
+    <div class="row">
+      <button class="go" id="register">Create account</button>
+      <button class="alt" id="login">Sign in</button>
+    </div>
+    <p class="msg" id="authMsg"></p>
+  </div>
+</div>
+
+<script type="module" src="reels.js"></script>
+</body>
+</html>

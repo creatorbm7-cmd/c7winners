@@ -165,6 +165,9 @@ sending one sets it before the roll, and it is truncated to 64 characters.
 { "won": true, "roll": 0.4213, "stake": 100, "payout": 196, "net": 96, "nonce": 4, "balance": 1096 }
 ```
 
+`nonce` is the one this roll used; the next roll uses `nonce + 1`, which is also
+what `/api/me` reports.
+
 **400** with `{ "error": "You only have 40 chips.", "balance": 40 }` when the
 stake exceeds the balance. **429** after 120 bets in a minute.
 
