@@ -466,3 +466,33 @@ describe("reading an origin list", () => {
     }
   });
 });
+
+describe("what the deployment says about itself", () => {
+  it("names the origins it will answer, so the setting can be checked from outside", async () => {
+    const s = await serve({}, { allowedOrigins: ["https://c7winners.com"] });
+    after(s.close);
+    const { json } = await s.call("GET", "/api/status");
+    assert.deepEqual(json.cors, { allowedOrigins: ["https://c7winners.com"] });
+  });
+
+  it("says so plainly when it will answer none", async () => {
+    const s = await serve();
+    after(s.close);
+    const { json } = await s.call("GET", "/api/status");
+    assert.deepEqual(json.cors, { allowedOrigins: [] });
+  });
+
+  it("names the build when the platform provided one", async () => {
+    const s = await serve({}, { build: { commit: "9c98f6d" } });
+    after(s.close);
+    const { json } = await s.call("GET", "/api/status");
+    assert.deepEqual(json.build, { commit: "9c98f6d" });
+  });
+
+  it("says nothing rather than guessing when it was not told", async () => {
+    const s = await serve();
+    after(s.close);
+    const { json } = await s.call("GET", "/api/status");
+    assert.equal("build" in json, false);
+  });
+});

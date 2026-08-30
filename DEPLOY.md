@@ -116,6 +116,12 @@ hop for `TRUST_PROXY` to count.
 > database, and whether an account exists would depend on which replica answered.
 > To run more than one, set `DATABASE_URL` to a Postgres instance instead.
 
+`GET /api/status` reports what the running process actually got: `build.commit`
+(from Railway's `RAILWAY_GIT_COMMIT_SHA`), `cors.allowedOrigins`, and
+`storage.createdThisBoot`. Check it after changing any of the settings above —
+a variable that was edited but never applied looks exactly like one that was
+never set, and this is the difference between them.
+
 Settings → Networking generates a `*.up.railway.app` hostname, and takes a
 custom domain: add `play.c7winners.com` there, then put the CNAME it prints at
 the registrar, per [DNS](#dns).

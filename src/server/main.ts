@@ -47,6 +47,15 @@ const ALLOWED_ORIGINS = (() => {
   }
 })();
 
+/**
+ * The commit this build came from, if the platform tells the process.
+ *
+ * Railway injects `RAILWAY_GIT_COMMIT_SHA`; `GIT_COMMIT` is there for anywhere
+ * that does not. Without one of them the field is simply absent, which is
+ * honest — better than printing a value that might be from another build.
+ */
+const COMMIT = (process.env["RAILWAY_GIT_COMMIT_SHA"] ?? process.env["GIT_COMMIT"] ?? "").trim();
+
 const TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
@@ -76,6 +85,7 @@ const api = createApi(store, {
   trustedProxies: Number.isInteger(TRUST_PROXY) && TRUST_PROXY > 0 ? TRUST_PROXY : 0,
   storage: { engine: dialect, createdThisBoot },
   allowedOrigins: ALLOWED_ORIGINS,
+  ...(COMMIT ? { build: { commit: COMMIT } } : {}),
 });
 
 const server = createServer((req, res) => {
@@ -108,6 +118,7 @@ server.listen(PORT, () => {
   console.log(
     `  allowed origins: ${ALLOWED_ORIGINS.join(", ") || "none (this API answers same-origin pages only)"}`,
   );
+  console.log(`  build: ${COMMIT || "unknown (no RAILWAY_GIT_COMMIT_SHA or GIT_COMMIT)"}`);
 
   // Loud on purpose. A wiped database is otherwise indistinguishable from a
   // healthy empty one: the process starts, /api/health passes, and the only
