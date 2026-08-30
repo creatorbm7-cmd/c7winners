@@ -216,12 +216,23 @@ able to check without an account. This is what
                     "deposits": false, "withdrawals": false, "cashOut": false,
                     "requiresGamingLicence": false, "requiresPaymentProcessor": false },
   "rules": { "winChance": 0.5, "houseEdge": 0.02 },
+  "build": { "commit": "9c98f6d…" },
+  "cors": { "allowedOrigins": ["https://c7winners.com"] },
   "storage": { "engine": "sqlite", "createdThisBoot": false },
   "chipsInCirculation": 0, "housePosition": 0, "playerChips": 0,
   "ledgerEntries": 0, "players": 0,
   "booksReconcile": true, "negativeAccounts": 0
 }
 ```
+
+`build` and `cors` are here because a deployment is easy to get wrong and, until
+now, impossible to check without a dashboard login: whether the commit you merged
+is the one actually running, and which origins the server will answer. Neither is
+a secret — the second is discoverable by asking with an `Origin` header — and
+saying them plainly turns a dashboard hunt into one request. `build` is absent
+when the platform never told the process which commit it built (Railway sets
+`RAILWAY_GIT_COMMIT_SHA`; `GIT_COMMIT` works anywhere else), because a made-up
+value would be worse than none.
 
 `storage.createdThisBoot` is the one to watch on a deployment: `true` means no
 database file existed when the process started. True once is a first deploy;

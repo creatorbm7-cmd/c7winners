@@ -84,6 +84,19 @@ export interface ApiConfig {
    * asked is how a hostile page gets to read a signed-in player's data.
    */
   readonly allowedOrigins?: readonly string[];
+  /**
+   * Which build is running, when the platform is willing to say.
+   *
+   * Reported so that "is the code I merged actually live?" can be answered from
+   * outside, by anyone, without a dashboard login. Every other way of asking
+   * that question needs access to the host.
+   */
+  readonly build?: BuildFacts;
+}
+
+export interface BuildFacts {
+  /** The commit this process was built from, or undefined if unknown. */
+  readonly commit?: string;
 }
 
 export interface StorageFacts {
@@ -183,6 +196,7 @@ export function createApi(store: Store, config: ApiConfig = {}) {
   const clock = config.clock ?? Date.now;
   const storage = config.storage;
   const allowedOrigins = new Set(config.allowedOrigins ?? []);
+  const build = config.build;
   const limiter = {
     global: new RateLimiter(limits.global, clock),
     register: new RateLimiter(limits.register, clock),
@@ -382,6 +396,13 @@ export function createApi(store: Store, config: ApiConfig = {}) {
       send(ctx.res, 200, {
         capabilities: CAPABILITIES,
         rules: store.rules,
+        // Configuration a deployment is easy to get wrong and impossible to
+        // check from outside: which build is live, and who may call this API
+        // from a page. Neither is a secret — the second is discoverable by
+        // asking with an Origin header — and saying them plainly turns a
+        // dashboard hunt into one request.
+        ...(build === undefined ? {} : { build }),
+        cors: { allowedOrigins: [...allowedOrigins] },
         ...(storage === undefined ? {} : { storage }),
         ...(await store.status()),
       });
