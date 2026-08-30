@@ -62,6 +62,7 @@ export interface BetOutcome {
   readonly stake: number;
   readonly payout: number;
   readonly net: number;
+  /** The nonce this round used. The next roll uses `nonce + 1`. */
   readonly nonce: number;
   readonly balance: number;
 }
