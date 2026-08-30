@@ -217,6 +217,7 @@ able to check without an account. This is what
                     "requiresGamingLicence": false, "requiresPaymentProcessor": false },
   "rules": { "winChance": 0.5, "houseEdge": 0.02 },
   "build": { "commit": "9c98f6d…" },
+  "startedAt": 1756540000000,
   "cors": { "allowedOrigins": ["https://c7winners.com"] },
   "storage": { "engine": "sqlite", "createdThisBoot": false },
   "chipsInCirculation": 0, "housePosition": 0, "playerChips": 0,
@@ -234,6 +235,11 @@ when the platform never told the process which commit it built (Railway sets
 `RAILWAY_GIT_COMMIT_SHA`; `GIT_COMMIT` works anywhere else), because a made-up
 value would be worse than none.
 
+`startedAt` is when the serving process came up. Two readings carrying the same
+value came from the same process, which is how you tell a redeploy that landed
+from one that crashed and left the old container serving — a distinction that is
+otherwise invisible whenever the deploy changed no visible setting.
+
 `storage.createdThisBoot` is the one to watch on a deployment: `true` means no
 database file existed when the process started. True once is a first deploy;
 true again after a later deploy means the data is not on a volume and the
@@ -244,6 +250,31 @@ an account with a name — the mint, the house, or a player.
 
 **200** `{ "ok": true }`, or **500** `{ "ok": false, "error": "…" }`. The
 deployment's health check points here.
+
+## A client to copy
+
+[`src/client/playApi.ts`](src/client/playApi.ts) is this API in one typed file:
+no dependencies, no framework, nothing global touched. Copy it into a front end
+built elsewhere and the endpoint names, payload shapes and error fields come
+with it.
+
+```ts
+const api = new PlayApi({ baseUrl: "/api" });   // relative: same origin, no CORS
+await api.register("asha", "correct horse battery staple");
+await api.faucet();
+const round = await api.bet(100);               // one spin
+```
+
+`PlayApiError` carries what the screen needs rather than only a message:
+`balance` when a stake was too large, `nextClaimAt` for a faucet countdown,
+`retryAfterMs` for a rate limit.
+
+For a slot, `reelFaces(round)` gives the faces to display. The reels depict a
+decision the server already made — matching on a win, deliberately not matching
+on a loss — and are derived from `roll`, so a replay, a reconnect and a
+screenshot of the same round all agree. Its tests are the contract: they run the
+client against the real server over real HTTP, so a renamed field breaks them
+here rather than in someone else's browser.
 
 ## Rate limits
 
