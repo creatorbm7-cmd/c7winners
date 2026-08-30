@@ -496,3 +496,24 @@ describe("what the deployment says about itself", () => {
     assert.equal("build" in json, false);
   });
 });
+
+describe("telling one process from the next", () => {
+  it("reports when it started, and says the same thing while it runs", async () => {
+    const s = await serve();
+    after(s.close);
+    const first = (await s.call("GET", "/api/status")).json.startedAt;
+    const second = (await s.call("GET", "/api/status")).json.startedAt;
+    assert.equal(typeof first, "number");
+    assert.equal(first, second, "the same process reported two different boots");
+  });
+
+  it("reports a different start for a process that started later", async () => {
+    // What a redeploy looks like from outside: same settings, new process.
+    const before = await serve({}, { clock: () => 1_000 });
+    after(before.close);
+    const after_ = await serve({}, { clock: () => 2_000 });
+    after(after_.close);
+    assert.equal((await before.call("GET", "/api/status")).json.startedAt, 1_000);
+    assert.equal((await after_.call("GET", "/api/status")).json.startedAt, 2_000);
+  });
+});

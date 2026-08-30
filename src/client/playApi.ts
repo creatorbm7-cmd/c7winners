@@ -86,6 +86,8 @@ export interface PlatformStatus {
   readonly capabilities: Capabilities;
   readonly rules: GameRules;
   readonly build?: { readonly commit?: string };
+  /** Epoch ms when the serving process started. Same value, same process. */
+  readonly startedAt: number;
   readonly cors: { readonly allowedOrigins: readonly string[] };
   readonly storage?: { readonly engine: string; readonly createdThisBoot: boolean };
   readonly chipsInCirculation: number;

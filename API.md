@@ -217,6 +217,7 @@ able to check without an account. This is what
                     "requiresGamingLicence": false, "requiresPaymentProcessor": false },
   "rules": { "winChance": 0.5, "houseEdge": 0.02 },
   "build": { "commit": "9c98f6d…" },
+  "startedAt": 1756540000000,
   "cors": { "allowedOrigins": ["https://c7winners.com"] },
   "storage": { "engine": "sqlite", "createdThisBoot": false },
   "chipsInCirculation": 0, "housePosition": 0, "playerChips": 0,
@@ -233,6 +234,11 @@ saying them plainly turns a dashboard hunt into one request. `build` is absent
 when the platform never told the process which commit it built (Railway sets
 `RAILWAY_GIT_COMMIT_SHA`; `GIT_COMMIT` works anywhere else), because a made-up
 value would be worse than none.
+
+`startedAt` is when the serving process came up. Two readings carrying the same
+value came from the same process, which is how you tell a redeploy that landed
+from one that crashed and left the old container serving — a distinction that is
+otherwise invisible whenever the deploy changed no visible setting.
 
 `storage.createdThisBoot` is the one to watch on a deployment: `true` means no
 database file existed when the process started. True once is a first deploy;

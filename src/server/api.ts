@@ -197,6 +197,15 @@ export function createApi(store: Store, config: ApiConfig = {}) {
   const storage = config.storage;
   const allowedOrigins = new Set(config.allowedOrigins ?? []);
   const build = config.build;
+  /**
+   * When this process came up.
+   *
+   * Two readings carrying the same value came from the same process, so
+   * "did the deployment I just triggered actually replace the running one?"
+   * is answerable from outside without writing anything to the database.
+   * Without it, a redeploy that changes no visible setting is invisible.
+   */
+  const startedAt = clock();
   const limiter = {
     global: new RateLimiter(limits.global, clock),
     register: new RateLimiter(limits.register, clock),
@@ -402,6 +411,7 @@ export function createApi(store: Store, config: ApiConfig = {}) {
         // asking with an Origin header — and saying them plainly turns a
         // dashboard hunt into one request.
         ...(build === undefined ? {} : { build }),
+        startedAt,
         cors: { allowedOrigins: [...allowedOrigins] },
         ...(storage === undefined ? {} : { storage }),
         ...(await store.status()),
