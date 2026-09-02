@@ -7,9 +7,9 @@
  * ALLOWED_ORIGINS before the browser will let it read a reply.
  */
 import { createServer } from "node:http";
-import { existsSync } from "node:fs";
+import { chownSync, existsSync, mkdirSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { extname, join, normalize } from "node:path";
+import { dirname, extname, join, normalize } from "node:path";
 import { createApi, parseAllowedOrigins } from "./api.js";
 import { createDatabase } from "./database.js";
 import { migrate } from "./schema.js";
@@ -67,6 +67,58 @@ const CSP =
   "default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
   "font-src https://fonts.gstatic.com; script-src 'self'; img-src 'self' data:; " +
   "base-uri 'none'; form-action 'none'; frame-ancestors 'self'";
+
+/**
+ * Takes ownership of the database directory, then gives up root.
+ *
+ * A volume arrives owned by root. This server is meant to run unprivileged, so
+ * the first boot after one is attached cannot open its own database: SQLite
+ * fails, the process dies before it listens, and the platform keeps the
+ * previous container serving — which from outside is indistinguishable from a
+ * deploy that never happened. The image cannot fix it either, since the mount
+ * replaces whatever ownership the image gave that path.
+ *
+ * So the process starts as root, long enough to make that one directory and
+ * hand it to the user it is about to become, and then becomes that user. If any
+ * of that fails it exits: carrying on as root would trade a visible outage for
+ * an invisible privilege.
+ *
+ * Started unprivileged already — locally, or on a platform that drops for us —
+ * this does nothing at all.
+ */
+function takeDataDirectoryAndDropRoot(path: string): void {
+  if (process.getuid?.() !== 0) return;
+
+  // The `node` user in the official images. Overridable for an image that
+  // numbers its unprivileged user differently.
+  const uid = Number(process.env["RUN_AS_UID"] ?? 1000);
+  const gid = Number(process.env["RUN_AS_GID"] ?? uid);
+  if (!Number.isInteger(uid) || uid <= 0 || !Number.isInteger(gid) || gid <= 0) {
+    throw new Error(`RUN_AS_UID/RUN_AS_GID must be positive integers, got ${uid}/${gid}.`);
+  }
+
+  const directory = dirname(path);
+  try {
+    mkdirSync(directory, { recursive: true });
+    chownSync(directory, uid, gid);
+    if (existsSync(path)) chownSync(path, uid, gid);
+  } catch (err) {
+    throw new Error(`Could not hand ${directory} to uid ${uid}: ${(err as Error).message}`);
+  }
+
+  try {
+    process.setgid?.(gid);
+    process.setuid?.(uid);
+  } catch (err) {
+    throw new Error(`Could not drop root to uid ${uid}: ${(err as Error).message}`);
+  }
+  if (process.getuid?.() !== uid) {
+    throw new Error(`Refusing to run as root: the drop to uid ${uid} did not take.`);
+  }
+  console.log(`  dropped root: now uid ${uid}, ${directory} is ours`);
+}
+
+takeDataDirectoryAndDropRoot(DB_PATH);
 
 // Checked before the database is opened, because opening it creates the file:
 // after that there is no way to tell a first boot from a wiped one.

@@ -35,8 +35,11 @@ ENV PORT=8080 \
     WEB_ROOT=dist-web
 EXPOSE 8080
 
-# Drop privileges: the server needs to read its own files and write one database.
+# The server drops to this user itself, in main.ts, after it has taken ownership
+# of the database directory. It has to be that way round: a mounted volume
+# arrives owned by root and replaces whatever ownership this image gives /data,
+# so a process that started unprivileged could never open its own database.
 RUN mkdir -p /data && chown node:node /data
-USER node
+ENV RUN_AS_UID=1000 RUN_AS_GID=1000
 
 CMD ["node", "dist/server/main.js"]

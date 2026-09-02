@@ -98,6 +98,13 @@ them:
 | `DATABASE_PATH` | `/data/c7winners.db` | Puts the database on that volume |
 | `TRUST_PROXY` | `1` | Railway terminates TLS one hop in front |
 
+The server starts as root, takes ownership of the database directory, and drops
+to an unprivileged user before it listens — because a volume arrives owned by
+root and replaces whatever ownership the image gave that path, so a process that
+started unprivileged could never open its own database. `RUN_AS_UID` and
+`RUN_AS_GID` (both 1000 in the image) say which user it becomes. If the drop
+fails the process exits rather than serving as root.
+
 `TRUST_PROXY` earns its row. It defaults to 0, which is correct only with
 nothing in front; left at 0 behind Railway's proxy, every request looks like it
 came from the proxy, so one visitor's traffic can exhaust the rate limit for
